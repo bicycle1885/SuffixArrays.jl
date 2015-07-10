@@ -119,42 +119,6 @@ function _sais_se(s, sa)
 
     # Step 1
     C, C_s, C_l, C_lms = scan!(s)
-    @show s
-    #C   = AlphabetCounter(σ)
-    #C_s = AlphabetCounter(σ)
-    #C_l = AlphabetCounter(σ)
-    #C_lms = AlphabetCounter(σ)
-    #add!(C, s[n])
-    #lms_poss = falses(n)
-    #t = falses(n)
-    #t[n] = true
-    #n_lms = 0
-    #n_l = 0
-    #n_s = 1
-    #s_type_prev = true
-    #for i in n-1:-1:1
-    #    add!(C, s[i])
-    #    s_type = s[i] == s[i+1] ? s_type_prev : s[i] < s[i+1]
-    #    if s_type  # S-type
-    #        add!(C_s, s[i])
-    #        n_s += 1
-    #        t[i] = true
-    #    else  # L-type
-    #        add!(C_l, s[i])
-    #        n_l += 1
-    #        t[i] = false
-    #        if s_type_prev
-    #            add!(C_lms, s[i+1])
-    #            n_lms += 1
-    #            lms_poss[i+1] = true
-    #        end
-    #    end
-    #    s_type_prev = s_type
-    #end
-    #C   = Bucket(C)
-    #C_s = Bucket(C_s)
-    #C_l = Bucket(C_l)
-    #C_lms = Bucket(C_lms)
 
     # TODO: use disk
     A_lms_left = zeros(Int, s.n_lms)
@@ -180,11 +144,11 @@ function _sais_se(s, sa)
         @assert countnz(A_l) ≤ s.n_lms
         # fill LMS-type suffixes to A_l when entering a new bucket
         if i == C_l[c_l]
-            c_l, c_lms = fill_suffixes!(A_l, i, A_lms_left, C_l, c_l, C_lms, c_lms, s.seq, s.σ)
+            c_l, c_lms = fill_suffixes!(A_l, i, A_lms_left, C_l, c_l, C_lms,
+            c_lms, s)
         end
         j = A_l[i]
         @assert j > 0
-        #if j > 1 && isL(t, j - 1)
         if j > 1 && isL(s, j - 1)
             k = C_l[s[j-1]]
             A_l[k] = j - 1
@@ -214,7 +178,8 @@ function _sais_se(s, sa)
         @assert countnz(A_s) ≤ s.n_lms
         # fill LMS-type suffixes to A_l when entering a new bucket
         if i == C_s[c_s]
-            c_s, c_lms = fill_suffixes!(A_s, i, A_lms_right, C_s, c_s, C_lms, c_lms, s.seq, s.σ, false)
+            c_s, c_lms = fill_suffixes!(A_s, i, A_lms_right, C_s, c_s, C_lms,
+            c_lms, s, false)
         end
 
         j = A_s[i]
@@ -223,7 +188,6 @@ function _sais_se(s, sa)
             A_s[end] = n
             A_s[i] = 0
             move_right!(C_s, s[n])
-        #elseif isS(t, j - 1)
         elseif isS(s, j - 1)
             k = C_s[s[j-1]]
             A_s[k] = j - 1
@@ -250,8 +214,6 @@ function _sais_se(s, sa)
     for i in 2:s.n_lms
         lo₁ = A_lms_left[i-1]
         lo₂ = A_lms_left[i  ]
-        #hi₁ = findnext(lms_poss, lo₁ + 1)
-        #hi₂ = findnext(lms_poss, lo₂ + 1)
         hi₁ = findnextLMS(s, lo₁ + 1)
         hi₂ = findnextLMS(s, lo₂ + 1)
         if (len = hi₁ - lo₁) == hi₂ - lo₂
@@ -276,10 +238,8 @@ function _sais_se(s, sa)
             end
             lo = A_lms_left[i]
             if lo == n
-                #hi = findnext(lms_poss, 1)
                 hi = findnextLMS(s, 1)
             else
-                #hi = findnext(lms_poss, lo + 1)
                 hi = findnextLMS(s, lo + 1)
             end
             push!(R, hi)
@@ -340,11 +300,10 @@ function _sais_se(s, sa)
         # fill LMS-type suffixes to A_l when entering a new bucket
         if i == C_l[c_l]
             c_l, c_lms = fill_suffixes!(A_l, i, A_lms_left, C_l, c_l, C_lms,
-            c_lms, s.seq, s.σ)
+            c_lms, s)
         end
         j = A_l[i]
         @assert j > 0
-        #if j > 1 && isL(t, j - 1)
         if j > 1 && isL(s, j - 1)
             k = C_l[s[j-1]]
             A_l[k] = j - 1
@@ -361,7 +320,7 @@ function _sais_se(s, sa)
     for i in 1:s.n_s
         # fill LMS-type suffixes to A_l when entering a new bucket
         if i == C_s[c_s]
-            c_s, c_lms = fill_suffixes!(A_s, i, A_lms_right, C_s, c_s, C_lms, c_lms, s.seq, s.σ, false)
+            c_s, c_lms = fill_suffixes!(A_s, i, A_lms_right, C_s, c_s, C_lms, c_lms, s, false)
         end
 
         j = A_s[i]
@@ -399,15 +358,15 @@ function _sais_se(s, sa)
     sa
 end
 
-function fill_suffixes!(A, i, A_lms, C, c, C_lms, c_lms, s, σ, forward=true)
+function fill_suffixes!(A, i, A_lms, C, c, C_lms, c_lms, s, forward=true)
     @assert i == C[c]
-    while c < σ && i == C[c]
+    while c < s.σ && i == C[c]
         c += 1
     end
     c -= 1
     while c_lms ≤ c
         lo = C_lms[c_lms]
-        hi = c_lms < σ ? C_lms[c_lms+1] - 1 : length(s) + 1
+        hi = c_lms < s.σ ? C_lms[c_lms+1] - 1 : length(s) + 1
         for j in lo:hi
             if forward
                 k = A_lms[j]
@@ -423,32 +382,6 @@ function fill_suffixes!(A, i, A_lms, C, c, C_lms, c_lms, s, σ, forward=true)
     c, c_lms
 end
 
-function fill_A_l!(A_l, C_l, C_lms, n_lms)
-    n_l = length(A_l)
-    # point to the current character in A_l
-    c_l = 0
-    # point to the current character in A_lms
-    c_lms = 0
-    tmp = copy(C_l)
-    for i in 1:n_l
-        @assert countnz(A_l) ≤ n_lms
-        # fill LMS-type suffixes to A_l when entering a new bucket
-        if i == C_l[c_l]
-            c_l, c_lms = fill_suffixes!(A_l, i, A_lms_left, C_l, c_l, C_lms, c_lms, s, σ)
-        end
-        j = A_l[i]
-        @assert j > 0
-        if j > 1 && isL(t, j - 1)
-            k = C_l[s[j-1]]
-            A_l[k] = j - 1
-            A_l[i] = 0  # remove
-            move_right!(C_l, s[j-1])
-        end
-    end
-end
-
-isS(t, i) =  t[i]
-isL(t, i) = !t[i]
 
 ama = [1, 2, 1, 2, 2, 2, 1, 4, 1, 4, 2, 1, 4, 1, 4, 4, 1, 1, 3, 1, 0]
 n = length(ama)
