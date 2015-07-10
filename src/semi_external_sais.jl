@@ -14,6 +14,79 @@ type ArrayBuffer
     end
 end
 
+# finite sequence encoded on alphabet [0..σ-1]
+type Sequence{T}
+    # sequence data
+    seq::T
+    # alphabet size
+    σ::Int
+    # number of L-type suffixes
+    n_l::Int
+    # number of S-type suffixes
+    n_s::Int
+    # number of LMS-type suffix
+    n_lms::Int
+    # L/S-type (L-type -> false, S-type -> true)
+    t::BitVector
+    # LMS-type
+    lms::BitVector
+    function Sequence(seq, σ)
+        new(seq, σ, -1)
+    end
+end
+
+Sequence{T}(seq::T, σ) = Sequence{T}(seq, σ)
+
+Base.length(s::Sequence) = length(s.seq)
+Base.endof(s::Sequence)  = endof(s.seq)
+Base.getindex(s::Sequence, i) = s.seq[i]
+isLMS(s::Sequence, i) = s.lms[i]
+isL(s::Sequence, i) = !s.t[i]
+isS(s::Sequence, i) =  s.t[i]
+findnextLMS(s::Sequence, i) = findnext(s.lms, i)
+
+# scan sequence and accumulate data
+function scan!(s::Sequence)
+    n = length(s)
+    C     = AlphabetCounter(s.σ)
+    C_s   = AlphabetCounter(s.σ)
+    C_l   = AlphabetCounter(s.σ)
+    C_lms = AlphabetCounter(s.σ)
+    s.t = falses(n)
+    s.lms = falses(n)
+    s.n_lms = 0
+    s.n_l = 0
+    s.n_s = 0
+    if n > 0
+        add!(C, s[1])
+        s.t[n] = true
+        s.n_s += 1
+        was_s_type = true
+        for i in n-1:-1:1
+            add!(C, s[i])
+            if s[i] == s[i+1] ? was_s_type : s[i] < s[i+1]
+                # S-type
+                add!(C_s, s[i])
+                s.n_s += 1
+                s.t[i] = true
+                was_s_type = true
+            else
+                add!(C_l, s[i])
+                s.n_l += 1
+                s.t[i] = false
+                if was_s_type
+                    add!(C_lms, s[i+1])
+                    s.n_lms += 1
+                    s.lms[i+1] = true
+                end
+                was_s_type = false
+            end
+        end
+    end
+    @assert s.n_l + s.n_s == n
+    Bucket(C), Bucket(C_s), Bucket(C_l), Bucket(C_lms)
+end
+
 
 Base.write(ab::ArrayBuffer, x) = write(ab.io, x)
 
@@ -38,50 +111,57 @@ move_right!(b::Bucket, ch) = b.count[ch+1] += 1
 # sa: suffix array
 # σ: alphabet size
 function sais_se(s, sa, σ; dir=tempdir())
+    _sais_se(Sequence(s, σ), sa)
+end
+
+function _sais_se(s, sa)
     n = length(s)
 
     # Step 1
-    C   = AlphabetCounter(σ)
-    C_s = AlphabetCounter(σ)
-    C_l = AlphabetCounter(σ)
-    C_lms = AlphabetCounter(σ)
-    add!(C, s[n])
-    lms_poss = falses(n)
-    t = falses(n)
-    t[n] = true
-    n_lms = 0
-    n_l = 0
-    n_s = 1
-    s_type_prev = true
-    for i in n-1:-1:1
-        add!(C, s[i])
-        s_type = s[i] == s[i+1] ? s_type_prev : s[i] < s[i+1]
-        if s_type  # S-type
-            add!(C_s, s[i])
-            n_s += 1
-            t[i] = true
-        else  # L-type
-            add!(C_l, s[i])
-            n_l += 1
-            t[i] = false
-            if s_type_prev
-                add!(C_lms, s[i+1])
-                n_lms += 1
-                lms_poss[i+1] = true
-            end
-        end
-        s_type_prev = s_type
-    end
-    C   = Bucket(C)
-    C_s = Bucket(C_s)
-    C_l = Bucket(C_l)
-    C_lms = Bucket(C_lms)
+    C, C_s, C_l, C_lms = scan!(s)
+    @show s
+    #C   = AlphabetCounter(σ)
+    #C_s = AlphabetCounter(σ)
+    #C_l = AlphabetCounter(σ)
+    #C_lms = AlphabetCounter(σ)
+    #add!(C, s[n])
+    #lms_poss = falses(n)
+    #t = falses(n)
+    #t[n] = true
+    #n_lms = 0
+    #n_l = 0
+    #n_s = 1
+    #s_type_prev = true
+    #for i in n-1:-1:1
+    #    add!(C, s[i])
+    #    s_type = s[i] == s[i+1] ? s_type_prev : s[i] < s[i+1]
+    #    if s_type  # S-type
+    #        add!(C_s, s[i])
+    #        n_s += 1
+    #        t[i] = true
+    #    else  # L-type
+    #        add!(C_l, s[i])
+    #        n_l += 1
+    #        t[i] = false
+    #        if s_type_prev
+    #            add!(C_lms, s[i+1])
+    #            n_lms += 1
+    #            lms_poss[i+1] = true
+    #        end
+    #    end
+    #    s_type_prev = s_type
+    #end
+    #C   = Bucket(C)
+    #C_s = Bucket(C_s)
+    #C_l = Bucket(C_l)
+    #C_lms = Bucket(C_lms)
 
     # TODO: use disk
-    A_lms_left = zeros(Int, n_lms)
+    A_lms_left = zeros(Int, s.n_lms)
     tmp = copy(C_lms)
     for i in 1:n
-        if lms_poss[i]
+        #if lms_poss[i]
+        if isLMS(s, i)
             A_lms_left[C_lms[s[i]]] = i
             move_right!(C_lms, s[i])
         end
@@ -90,21 +170,22 @@ function sais_se(s, sa, σ; dir=tempdir())
     @show A_lms_left
 
     # Step 2
-    A_l = zeros(Int, n_l)
+    A_l = zeros(Int, s.n_l)
     # point to the current character in A_l
     c_l = 0
     # point to the current character in A_lms
     c_lms = 0
     tmp = copy(C_l)
-    for i in 1:n_l
-        @assert countnz(A_l) ≤ n_lms
+    for i in 1:s.n_l
+        @assert countnz(A_l) ≤ s.n_lms
         # fill LMS-type suffixes to A_l when entering a new bucket
         if i == C_l[c_l]
-            c_l, c_lms = fill_suffixes!(A_l, i, A_lms_left, C_l, c_l, C_lms, c_lms, s, σ)
+            c_l, c_lms = fill_suffixes!(A_l, i, A_lms_left, C_l, c_l, C_lms, c_lms, s.seq, s.σ)
         end
         j = A_l[i]
         @assert j > 0
-        if j > 1 && isL(t, j - 1)
+        #if j > 1 && isL(t, j - 1)
+        if j > 1 && isL(s, j - 1)
             k = C_l[s[j-1]]
             A_l[k] = j - 1
             A_l[i] = 0  # remove
@@ -114,9 +195,9 @@ function sais_se(s, sa, σ; dir=tempdir())
     @show A_l
     C_l = tmp
 
-    A_lms_right = Array(Int, n_lms)
+    A_lms_right = Array(Int, s.n_lms)
     j = 1
-    for i in 1:n_l
+    for i in 1:s.n_l
         if A_l[i] > 0
             A_lms_right[j] = A_l[i]
             j += 1
@@ -125,16 +206,15 @@ function sais_se(s, sa, σ; dir=tempdir())
     @show A_lms_right
 
     # Step 3
-    A_s = zeros(Int, n_s)
+    A_s = zeros(Int, s.n_s)
     c_s = 0
     c_lms = 0
     tmp = copy(C_s)
-    for i in 1:n_s
-        @assert countnz(A_s) ≤ n_lms
+    for i in 1:s.n_s
+        @assert countnz(A_s) ≤ s.n_lms
         # fill LMS-type suffixes to A_l when entering a new bucket
         if i == C_s[c_s]
-            c_s, c_lms = fill_suffixes!(A_s, i, A_lms_right, C_s, c_s, C_lms,
-            c_lms, s, σ, false)
+            c_s, c_lms = fill_suffixes!(A_s, i, A_lms_right, C_s, c_s, C_lms, c_lms, s.seq, s.σ, false)
         end
 
         j = A_s[i]
@@ -143,7 +223,8 @@ function sais_se(s, sa, σ; dir=tempdir())
             A_s[end] = n
             A_s[i] = 0
             move_right!(C_s, s[n])
-        elseif isS(t, j - 1)
+        #elseif isS(t, j - 1)
+        elseif isS(s, j - 1)
             k = C_s[s[j-1]]
             A_s[k] = j - 1
             A_s[i] = 0  # remove
@@ -155,7 +236,7 @@ function sais_se(s, sa, σ; dir=tempdir())
     @show A_s
 
     j = 1
-    for i in 1:n_s
+    for i in 1:s.n_s
         if A_s[i] > 0
             A_lms_left[j] = A_s[i]
             j += 1
@@ -164,13 +245,15 @@ function sais_se(s, sa, σ; dir=tempdir())
     @show A_lms_left
 
     # Step 4
-    B = falses(n_lms)
+    B = falses(s.n_lms)
     B[1] = true
-    for i in 2:n_lms
+    for i in 2:s.n_lms
         lo₁ = A_lms_left[i-1]
         lo₂ = A_lms_left[i  ]
-        hi₁ = findnext(lms_poss, lo₁ + 1)
-        hi₂ = findnext(lms_poss, lo₂ + 1)
+        #hi₁ = findnext(lms_poss, lo₁ + 1)
+        #hi₂ = findnext(lms_poss, lo₂ + 1)
+        hi₁ = findnextLMS(s, lo₁ + 1)
+        hi₂ = findnextLMS(s, lo₂ + 1)
         if (len = hi₁ - lo₁) == hi₂ - lo₂
             # two LMS substrings have the same length
             for d in 0:len
@@ -186,16 +269,18 @@ function sais_se(s, sa, σ; dir=tempdir())
     @show B
     R = Int[]
     i = 1
-    while i ≤ n_lms
+    while i ≤ s.n_lms
         if B[i]
-            while i < n_lms && !B[i+1]
+            while i < s.n_lms && !B[i+1]
                 i += 1
             end
             lo = A_lms_left[i]
             if lo == n
-                hi = findnext(lms_poss, 1)
+                #hi = findnext(lms_poss, 1)
+                hi = findnextLMS(s, 1)
             else
-                hi = findnext(lms_poss, lo + 1)
+                #hi = findnext(lms_poss, lo + 1)
+                hi = findnextLMS(s, lo + 1)
             end
             push!(R, hi)
         end
@@ -204,7 +289,7 @@ function sais_se(s, sa, σ; dir=tempdir())
     @show R
     S′ = zeros(Int, div(n, 2))
     name = 0
-    for i in 1:n_lms
+    for i in 1:s.n_lms
         if B[i]
             name += 1
         end
@@ -238,7 +323,8 @@ function sais_se(s, sa, σ; dir=tempdir())
     @show ISA′
     i = 0
     j = 0
-    while (i = findnext(lms_poss, i + 1)) > 0
+    #while (i = findnext(lms_poss, i + 1)) > 0
+    while (i = findnextLMS(s, i + 1)) > 0
         j += 1
         A_lms_left[ISA′[j]] = i
     end
@@ -250,14 +336,16 @@ function sais_se(s, sa, σ; dir=tempdir())
     c_l = 0
     # point to the current character in A_lms
     c_lms = 0
-    for i in 1:n_l
+    for i in 1:s.n_l
         # fill LMS-type suffixes to A_l when entering a new bucket
         if i == C_l[c_l]
-            c_l, c_lms = fill_suffixes!(A_l, i, A_lms_left, C_l, c_l, C_lms, c_lms, s, σ)
+            c_l, c_lms = fill_suffixes!(A_l, i, A_lms_left, C_l, c_l, C_lms,
+            c_lms, s.seq, s.σ)
         end
         j = A_l[i]
         @assert j > 0
-        if j > 1 && isL(t, j - 1)
+        #if j > 1 && isL(t, j - 1)
+        if j > 1 && isL(s, j - 1)
             k = C_l[s[j-1]]
             A_l[k] = j - 1
             #A_l[i] = 0  # remove
@@ -270,11 +358,10 @@ function sais_se(s, sa, σ; dir=tempdir())
     fill!(A_s, 0)
     c_s = 0
     c_lms = 0
-    for i in 1:n_s
+    for i in 1:s.n_s
         # fill LMS-type suffixes to A_l when entering a new bucket
         if i == C_s[c_s]
-            c_s, c_lms = fill_suffixes!(A_s, i, A_lms_right, C_s, c_s, C_lms,
-            c_lms, s, σ, false)
+            c_s, c_lms = fill_suffixes!(A_s, i, A_lms_right, C_s, c_s, C_lms, c_lms, s.seq, s.σ, false)
         end
 
         j = A_s[i]
@@ -283,7 +370,8 @@ function sais_se(s, sa, σ; dir=tempdir())
             A_s[end] = n
             #A_s[i] = 0
             move_right!(C_s, s[n])
-        elseif isS(t, j - 1)
+        #elseif isS(t, j - 1)
+        elseif isS(s, j - 1)
             k = C_s[s[j-1]]
             A_s[k] = j - 1
             #A_s[i] = 0
@@ -297,7 +385,7 @@ function sais_se(s, sa, σ; dir=tempdir())
     i = 0
     i_l = 1
     i_s = 1
-    while c < σ
+    while c < s.σ
         if i_l ≤ endof(A_l) && s[A_l[i_l]] == c
             sa[i+=1] = A_l[i_l]
             i_l += 1
@@ -362,7 +450,6 @@ end
 isS(t, i) =  t[i]
 isL(t, i) = !t[i]
 
-#sais_se([0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01], Int[], 2)
 ama = [1, 2, 1, 2, 2, 2, 1, 4, 1, 4, 2, 1, 4, 1, 4, 4, 1, 1, 3, 1, 0]
 n = length(ama)
 sa = zeros(Int, n)
