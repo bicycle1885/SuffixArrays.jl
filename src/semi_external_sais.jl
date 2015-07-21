@@ -24,81 +24,21 @@ function accumulate!(count, startpoint=true)
 end
 
 function find_next_LMS(t, start)
-    #@assert start == 1 || t[start] && !t[start-1] "first index or LMS position"
-    #l_type = false
-    l_type = !t[start]
+    s_type = t[start]
     for i in start+1:endof(t)
-        if l_type && t[i]
+        if !s_type && t[i]
             return i
         end
-        l_type = !t[i]
+        s_type = t[i]
     end
     return 0
 end
 
-function sais_se(s, SA, σ)
-    # Step 1
-    n = length(s)
-    t = falses(n)
-    t[n] = true
-    count = zeros(Int, σ)
-    count_s = zeros(Int, σ + 1)
-    count_l = zeros(Int, σ + 1)
-    count_lms = zeros(Int, σ + 1)
-    count[s[n]+1] += 1
-    count_s[s[n]+1] += 1
-    for i in n-1:-1:1
-        char = s[i]
-        count[char+1] += 1
-        t[i] = s[i] == s[i+1] ? t[i+1] : s[i] < s[i+1]
-        if t[i]
-            # S-type
-            count_s[char+1] += 1
-        else
-            # L-type
-            count_l[char+1] += 1
-            if t[i+1]
-                # i+1 is LMS-type
-                count_lms[s[i+1]+1] += 1
-            end
-        end
-    end
-    accumulate!(count)
-    n_s = accumulate!(count_s, false)
-    n_l = accumulate!(count_l)
-    n_lms = accumulate!(count_lms)
-    hoge = copy(count_lms)
-
-    tmp = copy(count_lms)
-    lms_positions = open("lms_positions", "w+")
-    for i in 2:n
-        if i == n || t[i] && !t[i-1]
-            # LMS-type
-            char = s[i]
-            write(lms_positions, i)
-            write(lms_positions, count_lms[char+1])
-            count_lms[char+1] += 1
-        end
-    end
-    count_lms = tmp
-    seek(lms_positions, 0)
-    A_lms_left = Array(Int, n_lms)
-    for _ in 1:n_lms
-        i = read(lms_positions, Int)
-        suf = read(lms_positions, Int)
-        A_lms_left[suf] = i
-    end
-    rm("lms_positions")
-
-    # Step 2
-    #A_L = ArrayBuffer{Int}(n_l)
-    #A_lms_right = ArrayBuffer{Int}(n_lms)
+function left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
     # debug
     A_L = zeros(Int, n_l)
-    A_lms_right = zeros(Int, n_lms)
-    count_lms′ = similar(count_lms)
+    tmp = copy(count_l)
     i = li = ri = 1
-    count_l′ = copy(count_l)
     for char in 0:σ-1
         # advance suffixes in A_L and write suffixes to A_lms_right
         while i < count_l[char+1]
@@ -124,28 +64,23 @@ function sais_se(s, SA, σ)
             A_L[count_l[char′+1]] = j - 1
             count_l[char′+1] += 1
         end
-        # TODO: in-place update would be OK
-        count_lms′[char+1] = ri - 1
     end
-    count_lms′[σ+1] = n_lms
-    count_lms = count_lms′
-    count_l = count_l′
-    #@show A_L A_lms_right
+    copy!(count_l, tmp)
+    return A_L
+end
 
-    # Step 3
-    # debug
+function right_to_left!(A_lms_left, A_lms_right, count_s, n_s, n_lms, s, t, σ)
     A_S = zeros(Int, n_s)
-    count_s′ = copy(count_s)
+    tmp = copy(count_s)
     i = n_s
-    ri = n_lms
-    li = n_lms
+    ri = li = n_lms
     for char in σ-1:-1:0
         while i > count_s[char+1]
             k = A_S[i]
             @assert k > 0
             if k == 1
                 char′ = s[end]
-                A_S[count_s[char′+1]] = n
+                A_S[count_s[char′+1]] = length(s)
                 count_s[char′+1] -= 1
             elseif t[k-1]
                 # S-type
@@ -161,14 +96,73 @@ function sais_se(s, SA, σ)
         while ri ≥ 1 && s[A_lms_right[ri]] == char
             j = A_lms_right[ri]
             ri -= 1
-            k = j == 1 ? n : j - 1
+            k = j == 1 ? length(s) : j - 1
             @assert t[k]
             char′ = s[k]
             A_S[count_s[char′+1]] = k
             count_s[char′+1] -= 1
         end
     end
-    count_s = count_s′
+    copy!(count_s, tmp)
+    return A_S
+end
+
+function sais_se(s, SA, σ)
+    # Step 1
+    n = length(s)
+    t = falses(n)
+    t[n] = true
+    count_s = zeros(Int, σ)
+    count_l = zeros(Int, σ)
+    count_lms = zeros(Int, σ + 1)
+    count_s[s[n]+1] += 1
+    for i in n-1:-1:1
+        char = s[i]
+        t[i] = s[i] == s[i+1] ? t[i+1] : s[i] < s[i+1]
+        if t[i]
+            # S-type
+            count_s[char+1] += 1
+        else
+            # L-type
+            count_l[char+1] += 1
+            if t[i+1]
+                # i+1 is LMS-type
+                count_lms[s[i+1]+1] += 1
+            end
+        end
+    end
+    n_lms = accumulate!(count_lms)
+
+    tmp = copy(count_lms)
+    lms_positions = open("lms_positions", "w+")
+    for i in 2:n
+        if i == n || t[i] && !t[i-1]
+            # LMS-type
+            char = s[i]
+            write(lms_positions, i)
+            write(lms_positions, count_lms[char+1])
+            count_lms[char+1] += 1
+        end
+    end
+    copy!(count_lms, tmp)
+    seek(lms_positions, 0)
+    A_lms_left = Array(Int, n_lms)
+    for _ in 1:n_lms
+        i = read(lms_positions, Int)
+        suf = read(lms_positions, Int)
+        A_lms_left[suf] = i
+    end
+    close(lms_positions)
+    rm("lms_positions")
+    n_l = accumulate!(count_l)
+    n_s = accumulate!(count_s, false)
+
+    # Step 2
+    A_lms_right = zeros(Int, n_lms)
+    left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
+
+    # Step 3
+    right_to_left!(A_lms_left, A_lms_right, count_s, n_s, n_lms, s, t, σ)
 
     # Step 4
     B = trues(n_lms)
@@ -188,6 +182,7 @@ function sais_se(s, SA, σ)
         end
     end
 
+    # Step 5
     S′ = zeros(Int, div(n, 2) + 1)
     n′ = n_lms
     σ′ = 0
@@ -198,7 +193,6 @@ function sais_se(s, SA, σ)
         j = A_lms_left[i]
         S′[div(j-1,2)+1] = σ′
     end
-
     j = 1
     for i in 1:endof(S′)
         if S′[i] > 0
@@ -208,15 +202,15 @@ function sais_se(s, SA, σ)
     end
     resize!(S′, n′)
 
-    SA′ = Array(Int, n′)
+    # Step 6
     ISA′ = Array(Int, n′)
     if all(B)
         copy!(ISA′, S′)
     else
+        SA′ = Array(Int, n′)
         sais(S′, SA′, 0, n′, nextpow2(σ′), false)
-        SA′ += 1
         for i in 1:n′
-            ISA′[SA′[i]] = i
+            ISA′[SA′[i]+1] = i
         end
         i = j = 1
         while (i = find_next_LMS(t, i)) > 0
@@ -227,101 +221,32 @@ function sais_se(s, SA, σ)
     #@show ISA′
 
     # Step 7
-    A_L = zeros(Int, n_l)
-    A_lms_right = zeros(Int, n_lms)
-    count_lms′ = similar(count_lms)
-    i = 1
-    li = 1
-    ri = 1
-    count_l′ = copy(count_l)
-    for char in 0:σ-1
-        # advance suffixes in A_L and write suffixes to A_lms_right
-        while i < count_l[char+1]
-            k = A_L[i]
-            @assert k > 0
-            if k >= 2 && !t[k-1]
-                # L-type
-                char′ = s[k-1]
-                A_L[count_l[char′+1]] = k - 1
-                count_l[char′+1] += 1
-            else
-                A_lms_right[ri] = k
-                ri += 1
-            end
-            i += 1
-        end
-        # read suffixes from A_lms_left to A_L
-        while li ≤ endof(A_lms_left) && s[A_lms_left[li]] == char
-            j = A_lms_left[li]
-            li += 1
-            @assert !t[j-1]
-            char′ = s[j-1]
-            A_L[count_l[char′+1]] = j - 1
-            count_l[char′+1] += 1
-        end
-        count_lms′[char+1] = ri - 1
-    end
-    count_lms′[σ+1] = n_lms
-    count_lms = count_lms′
-    count_l = count_l′
+    A_L = left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
 
     # Step 8
-    A_S = zeros(Int, n_s)
-    count_s′ = copy(count_s)
-    i = n_s
-    ri = n_lms
-    li = n_lms
-    for char in σ-1:-1:0
-        while i > count_s[char+1]
-            k = A_S[i]
-            @assert k > 0
-            if k == 1
-                char′ = s[end]
-                A_S[count_s[char′+1]] = n
-                count_s[char′+1] -= 1
-            elseif t[k-1]
-                # S-type
-                char′ = s[k-1]
-                A_S[count_s[char′+1]] = k - 1
-                count_s[char′+1] -= 1
-            else
-                A_lms_left[li] = k
-                li -= 1
-            end
-            i -= 1
-        end
-        while ri ≥ 1 && s[A_lms_right[ri]] == char
-            j = A_lms_right[ri]
-            ri -= 1
-            k = j == 1 ? n : j - 1
-            @assert t[k]
-            char′ = s[k]
-            A_S[count_s[char′+1]] = k
-            count_s[char′+1] -= 1
-        end
-    end
+    A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, n_lms, s, t, σ)
 
-    i = 1
-    li = 1
-    si = 1
+    # Step 9
+    i = li = si = 1
     for char in 0:σ-1
+        # L-type suffixes come first
         while li ≤ n_l && s[A_L[li]] == char
             SA[i] = A_L[li]
             li += 1
             i += 1
         end
+        # then S-type ones
         while si ≤ n_s && s[A_S[si]] == char
             SA[i] = A_S[si]
             si += 1
             i += 1
         end
     end
-    #@show SA
 end
 
 let
     for s in ["amammmasasmasassaara", "abra", "baba", "dabraaadad", "abaadad",
-        "aaaaa"]
+        "aaaaa", "acacac", "abababa"]
         println(s)
         s = vcat(s.data, 0)
         n = length(s)
@@ -350,9 +275,10 @@ end
 
 let
     srand(12345)
-    n = 2
+    n = 1
     for _ in 1:100
         s = randstring(n)
+        #println(s)
         s = vcat(s.data, 0)
         n = length(s)
         SA = Array(Int, n)
