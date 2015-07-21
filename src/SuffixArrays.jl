@@ -17,6 +17,7 @@ function SuffixArray{S}(s::S)
 end
 
 include("sais.jl")
+include("semi_external_sais.jl")
 
 function suffixsort(s)
     isempty(s) && return SA
@@ -30,7 +31,7 @@ end
 #=contains(haystack, needle)
 
 matchall(substring, s::String)=#
-const MAXCHAR = char(255)
+const MAXCHAR = Char(255)
 
 function lcp2(SA,s)
     inv = similar(SA)
