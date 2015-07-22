@@ -35,8 +35,9 @@ function find_next_LMS(t, start)
 end
 
 function left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
+    A_L = ArrayBuffer{Int}(n_l)
     # debug
-    A_L = zeros(Int, n_l)
+    #A_L = zeros(Int, n_l)
     tmp = copy(count_l)
     i = li = ri = 1
     for char in 0:σ-1
@@ -70,7 +71,9 @@ function left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
 end
 
 function right_to_left!(A_lms_left, A_lms_right, count_s, n_s, n_lms, s, t, σ)
-    A_S = zeros(Int, n_s)
+    # debug
+    #A_S = zeros(Int, n_s)
+    A_S = ArrayBuffer{Int}(n_s)
     tmp = copy(count_s)
     i = n_s
     ri = li = n_lms
@@ -109,6 +112,8 @@ end
 
 function sais_se(s, SA, σ)
     # Step 1
+    println("Step 1")
+    tic()
     n = length(s)
     t = falses(n)
     t[n] = true
@@ -158,31 +163,46 @@ function sais_se(s, SA, σ)
     n_s = accumulate!(count_s, false)
 
     # Step 2
+    toc()
+    println("Step 2")
+    tic()
     A_lms_right = zeros(Int, n_lms)
-    left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
+    A_L = left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
+    finalize(A_L)
 
     # Step 3
-    right_to_left!(A_lms_left, A_lms_right, count_s, n_s, n_lms, s, t, σ)
+    toc()
+    println("Step 3")
+    tic()
+    A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, n_lms, s, t, σ)
+    finalize(A_S)
 
     # Step 4
+    toc()
+    println("Step 4")
+    tic()
     B = trues(n_lms)
     for i in 2:n_lms
-        lo = A_lms_left[i]
-        hi = find_next_LMS(t, lo)
+        lo  = A_lms_left[i]
+        hi  = find_next_LMS(t, lo)
         lo′ = A_lms_left[i-1]
         hi′ = find_next_LMS(t, lo′)
         if hi - lo == hi′ - lo′
             while lo <= hi && s[lo] == s[lo′]
-                lo += 1
+                lo  += 1
                 lo′ += 1
             end
             if lo > hi
+                # duplicated
                 B[i] = false
             end
         end
     end
 
     # Step 5
+    toc()
+    println("Step 5")
+    tic()
     S′ = zeros(Int, div(n, 2) + 1)
     n′ = n_lms
     σ′ = 0
@@ -203,6 +223,9 @@ function sais_se(s, SA, σ)
     resize!(S′, n′)
 
     # Step 6
+    toc()
+    println("Step 6")
+    tic()
     ISA′ = Array(Int, n′)
     if all(B)
         copy!(ISA′, S′)
@@ -221,12 +244,21 @@ function sais_se(s, SA, σ)
     #@show ISA′
 
     # Step 7
+    toc()
+    println("Step 7")
+    tic()
     A_L = left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
 
     # Step 8
+    toc()
+    println("Step 8")
+    tic()
     A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, n_lms, s, t, σ)
 
     # Step 9
+    toc()
+    println("Step 9")
+    tic()
     i = li = si = 1
     for char in 0:σ-1
         # L-type suffixes come first
@@ -242,8 +274,14 @@ function sais_se(s, SA, σ)
             i += 1
         end
     end
+    finalize(A_L)
+    finalize(A_S)
+    toc()
+
+    return SA
 end
 
+#=
 let
     for s in ["amammmasasmasassaara", "abra", "baba", "dabraaadad", "abaadad",
         "aaaaa", "acacac", "abababa"]
@@ -253,9 +291,10 @@ let
         SA = Array(Int, n)
         sais(s, SA, 0, n, 256, false)
         SA += 1
-        SA1 = ArrayBuffer{Int}(Int, n, ".")
+        SA1 = ArrayBuffer{Int}(n)
         sais_se(s, SA1, 128)
         @assert SA == SA1
+        finalize(SA1)
     end
 end
 
@@ -267,9 +306,10 @@ let
         SA = Array(Int, n)
         sais(s, SA, 0, n, σ, false)
         SA += 1
-        SA1 = ArrayBuffer{Int}(Int, n, ".")
+        SA1 = ArrayBuffer{Int}(n)
         sais_se(s, SA1, σ)
         @assert SA == SA1
+        finalize(SA1)
     end
 end
 
@@ -289,3 +329,18 @@ let
         @assert SA == SA1
     end
 end
+
+let
+    srand(12345)
+    n = 10000
+    s = rand(1:4, n)
+    push!(s, 0)
+    n += 1
+    SA = Array(Int, n)
+    sais(s, SA, 0, n, 256, false)
+    SA += 1
+    SA1 = ArrayBuffer{Int}(n)
+    sais_se(s, SA1, 5)
+    @assert SA == SA1
+end
+=#

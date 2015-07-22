@@ -5,40 +5,51 @@ type Block{T}
     used::Int
     offset::Int
     io::IO
+    isdirtybuffer::Bool
     buffer::Vector{T}
+    dirtybit::BitVector
+end
+
+function Block{T}(::Type{T}, size, used, buffersize, io)
+    buffer = zeros(T, buffersize)
+    dirtybit = falses(buffersize)
+    Block(size, used, 0, io, false, buffer, dirtybit)
 end
 
 function Base.getindex{T}(block::Block{T}, i::Integer)
+    # invariant:
+    #   i (absolute index in block) = j (relative index in buffer)
+    #                               + block.offset (buffer offset in block)
     buffersize = length(block.buffer)
     j = i - block.offset
     if 1 ≤ j ≤ buffersize
         return block.buffer[j]
     end
-    # write buffer
-    seekend(block.io)
-    for j in 1:buffersize
-        write(block.io, j + block.offset)
-        write(block.io, block.buffer[j])
+    if block.isdirtybuffer
+        seekend(block.io)
+        # write dirty elements
+        j = 0
+        while (j = findnext(block.dirtybit, j + 1)) > 0
+            write(block.io, j + block.offset)
+            write(block.io, block.buffer[j])
+        end
+        flush(block.io)
     end
-    flush(block.io)
     # read buffer
-    pairsize = sizeof(Int) + sizeof(T)
     block.offset = div(i - 1, buffersize) * buffersize
-    n = min(buffersize, block.used - block.offset)
-    s = IntSet(1:n)
-    while !isempty(s) && position(block.io) != 0
-        skip(block.io, -pairsize)
+    s = IntSet(1:min(buffersize, block.used - block.offset))
+    seekstart(block.io)
+    while !isempty(s) && !eof(block.io)
         idx = read(block.io, Int)
         elm = read(block.io, T)
-        skip(block.io, -pairsize)
         j = idx - block.offset
-        # NOTE: adding necessary condition may make it faster
-        # i.e. if 1 ≤ j ≤ buffersize && j ∈ s
         if j ∈ s
             block.buffer[j] = elm
             delete!(s, j)
         end
     end
+    fill!(block.dirtybit, false)
+    block.isdirtybuffer = false
     j = i - block.offset
     # if not yet initialized, return zero(T)
     return j ∈ s ? zero(T) : block.buffer[j]
@@ -48,6 +59,8 @@ function Base.setindex!{T}(block::Block{T}, x::T, i::Integer)
     j = i - block.offset
     if 1 ≤ j ≤ length(block.buffer)
         block.buffer[j] = x
+        block.dirtybit[j] = true
+        block.isdirtybuffer = true
     else
         seekend(block.io)
         write(block.io, i)
@@ -57,13 +70,9 @@ function Base.setindex!{T}(block::Block{T}, x::T, i::Integer)
     return x
 end
 
-select_n_blocks(len) = len == 0 ? 0 : len ≤ 32 ? 1 : 32
-function select_blocksize(len, n_blocks)
-    if n_blocks == 0
-        return 64
-    end
-    return max(64, div(len - 1, n_blocks) + 1)
-end
+# parameter selectors
+select_n_blocks(len) = len == 0 ? 0 : len ≤ 16 ? 1 : 16
+select_blocksize(len, n_blocks) = n_blocks == 0 ? 64 : max(64, div(len - 1, n_blocks) + 1)
 select_buffersize(blocksize) = div(blocksize - 1, 16) + 1
 
 type ArrayBuffer{T} <: AbstractVector{T}
@@ -72,7 +81,8 @@ type ArrayBuffer{T} <: AbstractVector{T}
     blocksize::Int
     blocks::Vector{Block}
     # space: buffersize * n_blocks * sizeof(T) bytes
-    function ArrayBuffer{T}(::Type{T}, len::Integer, parent::String,
+    function ArrayBuffer{T}(::Type{T}, len::Integer;
+        parent::String=pwd(),
         n_blocks=select_n_blocks(len),
         blocksize=select_blocksize(len, n_blocks),
         buffersize=select_buffersize(blocksize))
@@ -89,39 +99,36 @@ type ArrayBuffer{T} <: AbstractVector{T}
             end
             rm(dirname, recursive=true)
         end)
-        arr.blocks = Block[]
+        arr.blocks = Array(Block, n_blocks)
         l = len
         for i in 1:n_blocks
             _, io = mktemp(dirname)
-            buffer = zeros(T, buffersize)
             used = l ≥ blocksize ? blocksize : l
             l -= used
-            block = Block(blocksize, used, 0, io, buffer)
-            push!(arr.blocks, block)
+            arr.blocks[i] = Block(T, blocksize, used, buffersize, io)
         end
         return arr
     end
 end
 
 if VERSION >= v"0.4-"
-    function Base.call{T}(::Type{ArrayBuffer{T}}, len::Int, n_blocks=select_n_blocks(len))
-        ArrayBuffer{T}(T, len, pwd(), n_blocks)
+    function Base.call{T}(::Type{ArrayBuffer{T}}, len::Int; kwargs...)
+        ArrayBuffer{T}(T, len; kwargs...)
     end
 end
 
 function Base.getindex(arr::ArrayBuffer, i::Integer)
-    j, o = divrem(i - 1, arr.blocksize)
-    return arr.blocks[j+1][o+1]
+    j, k = divrem(i - 1, arr.blocksize)
+    return arr.blocks[j+1][k+1]
 end
 
 function Base.setindex!(arr::ArrayBuffer, x, i::Integer)
-    j, o = divrem(i - 1, arr.blocksize)
-    arr.blocks[j+1][o+1] = x
+    j, k = divrem(i - 1, arr.blocksize)
+    arr.blocks[j+1][k+1] = x
 end
 
 Base.size(arr::ArrayBuffer) = (arr.len,)
 Base.length(arr::ArrayBuffer) = arr.len
-Base.endof(arr::ArrayBuffer)  = arr.len
 
 function Base.fill!(arr::ArrayBuffer, x)
     for i in 1:length(arr)
@@ -129,77 +136,3 @@ function Base.fill!(arr::ArrayBuffer, x)
     end
     arr
 end
-
-#=
-let
-    # array is zero-initialized
-    for n in [0, 5, 10, 50, 100, 500, 1000]
-        arr = ArrayBuffer{Int}(n)
-        for i in 1:n
-            @assert arr[i] == zero(Int)
-        end
-    end
-end
-
-let
-    for n in [0, 5, 10, 50, 100, 500, 1000]
-        arr = ArrayBuffer{Int}(n)
-        for i in 1:n
-            arr[i] = 1
-        end
-        for i in 1:n
-            @assert arr[i] == 1
-        end
-        finalize(arr)
-    end
-end
-
-let
-    srand(1234)
-    arr = Array{Int}(1000)
-    barr = ArrayBuffer{Int}(1000)
-    for i in 1:length(arr)
-        x = rand(1:100)
-        arr[i] = x
-        barr[i] = x
-    end
-    for _ in 1:1000
-        i = rand(1:1000)
-        x = rand(1:100)
-        arr[i] = x
-        barr[i] = x
-    end
-    for i in 1:1000
-        @assert arr[i] == barr[i]
-    end
-    for i in 1000:-1:1
-        @assert arr[i] == barr[i]
-    end
-    fill!(arr, 0)
-    fill!(barr, 0)
-    for i in 1:1000
-        @assert arr[i] == barr[i] == 0
-    end
-    for i in 1000:-1:1
-        @assert arr[i] == barr[i] == 0
-    end
-end
-
-let
-    srand(1234)
-    arr = ArrayBuffer{Int}(100_000, 53)
-    for i in 1:length(arr)
-        arr[i] = i
-    end
-    for _ in 1:1000
-        arr[rand(1:100_000)] = 0
-    end
-    for i in 1:length(arr)
-        arr[i] = i
-    end
-    for i in 1:length(arr)
-        x = arr[i]
-        @assert i == x
-    end
-end
-=#
