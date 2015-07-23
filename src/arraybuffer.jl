@@ -73,7 +73,7 @@ end
 # parameter selectors
 select_n_blocks(len) = len == 0 ? 0 : len ≤ 1024 ? 1 : 8
 select_blocksize(len, n_blocks) = n_blocks == 0 ? 64 : max(64, div(len - 1, n_blocks) + 1)
-select_buffersize(blocksize) = max(1024, div(blocksize - 1, 16) + 1)
+select_buffersize(blocksize) = blocksize ≤ 1024 ? blocksize : (div(blocksize - 1, 16) + 1)
 
 type ArrayBuffer{T} <: AbstractVector{T}
     len::Int

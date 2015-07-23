@@ -35,13 +35,23 @@ function find_next_LMS(t, start)
 end
 
 function left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
-    A_L = ArrayBuffer{Int}(n_l)
+    #A_L = ArrayBuffer{Int}(n_l)
     # debug
-    #A_L = zeros(Int, n_l)
+    A_L = zeros(Int, n_l)
     tmp = copy(count_l)
     i = li = ri = 1
+
+    # sentinel: '$' (< 0)
+    char′ = s[end]
+    A_L[count_l[char′+1]] = endof(s)
+    count_l[char′+1] += 1
+    # Note: there is no need to move `li` index
+    # because '$' is not a member of `A_lms_left`
+    # <del>li += 1</del>
+
     for char in 0:σ-1
         # advance suffixes in A_L and write suffixes to A_lms_right
+        #@show Char(char), A_lms_left, A_L, A_lms_right
         while i < count_l[char+1]
             k = A_L[i]
             @assert k > 0
@@ -71,20 +81,22 @@ function left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
 end
 
 function right_to_left!(A_lms_left, A_lms_right, count_s, n_s, n_lms, s, t, σ)
+    #A_S = ArrayBuffer{Int}(n_s)
     # debug
-    #A_S = zeros(Int, n_s)
-    A_S = ArrayBuffer{Int}(n_s)
+    A_S = zeros(Int, n_s)
     tmp = copy(count_s)
     i = n_s
-    ri = li = n_lms
+    #ri = li = n_lms
+    ri = length(A_lms_right)
+    li = length(A_lms_left)
     for char in σ-1:-1:0
         while i > count_s[char+1]
             k = A_S[i]
             @assert k > 0
             if k == 1
-                char′ = s[end]
-                A_S[count_s[char′+1]] = length(s)
-                count_s[char′+1] -= 1
+                #char′ = s[end]
+                #A_S[count_s[char′+1]] = length(s)
+                #count_s[char′+1] -= 1
             elseif t[k-1]
                 # S-type
                 char′ = s[k-1]
@@ -99,11 +111,13 @@ function right_to_left!(A_lms_left, A_lms_right, count_s, n_s, n_lms, s, t, σ)
         while ri ≥ 1 && s[A_lms_right[ri]] == char
             j = A_lms_right[ri]
             ri -= 1
-            k = j == 1 ? length(s) : j - 1
-            @assert t[k]
-            char′ = s[k]
-            A_S[count_s[char′+1]] = k
-            count_s[char′+1] -= 1
+            if j != 1
+                k = j == 1 ? length(s) : j - 1
+                @assert t[k]
+                char′ = s[k]
+                A_S[count_s[char′+1]] = k
+                count_s[char′+1] -= 1
+            end
         end
     end
     copy!(count_s, tmp)
@@ -116,11 +130,12 @@ function sais_se(s, SA, σ)
     tic()
     n = length(s)
     t = falses(n)
-    t[n] = true
+    #t[n] = true
     count_s = zeros(Int, σ)
     count_l = zeros(Int, σ)
     count_lms = zeros(Int, σ + 1)
-    count_s[s[n]+1] += 1
+    #count_s[s[n]+1] += 1
+    count_l[s[n]+1] += 1
     for i in n-1:-1:1
         char = s[i]
         t[i] = s[i] == s[i+1] ? t[i+1] : s[i] < s[i+1]
@@ -166,7 +181,8 @@ function sais_se(s, SA, σ)
     toc()
     println("Step 2")
     tic()
-    A_lms_right = zeros(Int, n_lms)
+    # A_lms_right holds so to say Left-Most L-type (LML) suffixes
+    A_lms_right = zeros(Int, n_lms + 1)
     A_L = left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
     finalize(A_L)
 
@@ -263,13 +279,13 @@ function sais_se(s, SA, σ)
     for char in 0:σ-1
         # L-type suffixes come first
         while li ≤ n_l && s[A_L[li]] == char
-            SA[i] = A_L[li]
+            SA[i] = A_L[li] - 1
             i += 1
             li += 1
         end
         # then S-type ones
         while si ≤ n_s && s[A_S[si]] == char
-            SA[i] = A_S[si]
+            SA[i] = A_S[si] - 1
             i += 1
             si += 1
         end
@@ -281,16 +297,16 @@ function sais_se(s, SA, σ)
     return SA
 end
 
-#=
 let
     for s in ["amammmasasmasassaara", "abra", "baba", "dabraaadad", "abaadad",
         "aaaaa", "acacac", "abababa"]
         println(s)
-        s = vcat(s.data, 0)
+        #s = vcat(s.data, 0)
+        s = s.data
         n = length(s)
         SA = Array(Int, n)
         sais(s, SA, 0, n, 256, false)
-        SA += 1
+        #SA += 1
         SA1 = ArrayBuffer{Int}(n)
         sais_se(s, SA1, 128)
         @assert SA == SA1
@@ -301,11 +317,11 @@ end
 let
     for (s, σ) in [([1,2,3,2,1],4), ([3,2,1,2,3,2,1],4)]
         println(s)
-        s = vcat(s, 0)
+        #s = vcat(s, 0)
         n = length(s)
         SA = Array(Int, n)
         sais(s, SA, 0, n, σ, false)
-        SA += 1
+        #SA += 1
         SA1 = ArrayBuffer{Int}(n)
         sais_se(s, SA1, σ)
         @assert SA == SA1
@@ -319,11 +335,12 @@ let
     for _ in 1:100
         s = randstring(n)
         #println(s)
-        s = vcat(s.data, 0)
+        #s = vcat(s.data, 0)
+        s = s.data
         n = length(s)
         SA = Array(Int, n)
         sais(s, SA, 0, n, 256, false)
-        SA += 1
+        #SA += 1
         SA1 = Array(Int, n)
         sais_se(s, SA1, 128)
         @assert SA == SA1
@@ -338,9 +355,8 @@ let
     n += 1
     SA = Array(Int, n)
     sais(s, SA, 0, n, 256, false)
-    SA += 1
+    #SA += 1
     SA1 = ArrayBuffer{Int}(n)
     sais_se(s, SA1, 5)
     @assert SA == SA1
 end
-=#
