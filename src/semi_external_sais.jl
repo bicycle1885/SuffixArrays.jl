@@ -264,14 +264,14 @@ function sais_se(s, SA, σ)
         # L-type suffixes come first
         while li ≤ n_l && s[A_L[li]] == char
             SA[i] = A_L[li]
-            li += 1
             i += 1
+            li += 1
         end
         # then S-type ones
         while si ≤ n_s && s[A_S[si]] == char
             SA[i] = A_S[si]
-            si += 1
             i += 1
+            si += 1
         end
     end
     finalize(A_L)

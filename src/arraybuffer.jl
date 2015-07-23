@@ -23,7 +23,7 @@ function Base.getindex{T}(block::Block{T}, i::Integer)
     buffersize = length(block.buffer)
     j = i - block.offset
     if 1 ≤ j ≤ buffersize
-        return block.buffer[j]
+        @inbounds return block.buffer[j]
     end
     if block.isdirtybuffer
         seekend(block.io)
@@ -71,9 +71,9 @@ function Base.setindex!{T}(block::Block{T}, x::T, i::Integer)
 end
 
 # parameter selectors
-select_n_blocks(len) = len == 0 ? 0 : len ≤ 16 ? 1 : 16
+select_n_blocks(len) = len == 0 ? 0 : len ≤ 1024 ? 1 : 8
 select_blocksize(len, n_blocks) = n_blocks == 0 ? 64 : max(64, div(len - 1, n_blocks) + 1)
-select_buffersize(blocksize) = div(blocksize - 1, 16) + 1
+select_buffersize(blocksize) = max(1024, div(blocksize - 1, 16) + 1)
 
 type ArrayBuffer{T} <: AbstractVector{T}
     len::Int
