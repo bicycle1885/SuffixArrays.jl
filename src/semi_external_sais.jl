@@ -79,7 +79,7 @@ function left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
     return A_L
 end
 
-function right_to_left!(A_lms_left, A_lms_right, count_s, n_s, n_lms, s, t, σ)
+function right_to_left!(A_lms_left, A_lms_right, count_s, n_s, s, t, σ)
     A_S = ArrayBuffer{Int}(n_s)
     # debug
     #A_S = zeros(Int, n_s)
@@ -182,7 +182,7 @@ function sais_se(s, SA, σ)
     toc()
     println("Step 3")
     tic()
-    A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, n_lms, s, t, σ)
+    A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, s, t, σ)
     finalize(A_S)
 
     # Step 4
@@ -261,7 +261,7 @@ function sais_se(s, SA, σ)
     toc()
     println("Step 8")
     tic()
-    A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, n_lms, s, t, σ)
+    A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, s, t, σ)
 
     # Step 9
     toc()
