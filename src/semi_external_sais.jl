@@ -226,7 +226,6 @@ function sais_se(s, SA, σ)
     println("Step 6")
     tic()
     ISA′ = Array(Int, n′)
-    init!(A_lms_left)
     if all(B)
         copy!(ISA′, S′)
     else
@@ -235,6 +234,7 @@ function sais_se(s, SA, σ)
         for i in 1:n′
             ISA′[SA′[i]+1] = i
         end
+        init!(A_lms_left)
         i = j = 1
         while (i = find_next_LMS(t, i)) > 0
             A_lms_left[ISA′[j]] = i
