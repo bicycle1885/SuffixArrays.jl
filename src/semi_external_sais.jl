@@ -35,7 +35,7 @@ function find_next_LMS(t, start)
 end
 
 function left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
-    A_L = ArrayBuffer{Int}(n_l)
+    A_L = ArrayBuffer{Int,true}(n_l)
     # debug
     #A_L = zeros(Int, n_l)
     tmp = copy(count_l)
@@ -155,7 +155,7 @@ function sais_se(s, SA, σ)
     n_lms = accumulate!(count_lms)
 
     tmp = copy(count_lms)
-    A_lms_left = ArrayBuffer{Int}(n_lms)
+    A_lms_left = ArrayBuffer{Int,true}(n_lms)
     for i in 2:n
         if t[i] && !t[i-1]
             # LMS-type
@@ -172,8 +172,9 @@ function sais_se(s, SA, σ)
     toc()
     println("Step 2")
     tic()
-    A_lms_right = ArrayBuffer{Int}(n_lms + 1)
+    A_lms_right = ArrayBuffer{Int,true}(n_lms + 1)
     A_L = left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
+    #Profile.print()
     finalize(A_L)
 
     # Step 3: Induced sort (stage 2)
@@ -237,6 +238,8 @@ function sais_se(s, SA, σ)
     if all(B)
         copy!(ISA′, S′)
     else
+        @assert n′ ≤ div(1024^3, 8)
+        # bound by 1GiB
         SA′ = Array(Int, n′)
         sais(S′, SA′, 0, n′, nextpow2(σ′), false)
         for i in 1:n′
