@@ -119,6 +119,14 @@ function right_to_left!(A_lms_left, A_lms_right, count_s, n_s, s, t, σ)
     return A_S
 end
 
+# a thin wrapper of sequence object
+immutable Sequence{T} <: AbstractVector{UInt}
+    seq::T
+end
+
+Base.getindex(seq::Sequence, i) = convert(UInt, seq.seq[i])
+Base.length(seq::Sequence) = length(seq.seq)
+
 function sais_se(s, SA, σ)
     # Step 1: Scan sequence and determine suffix types
     println("Step 1")
