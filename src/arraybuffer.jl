@@ -1,8 +1,8 @@
 type Block{T}
     # immutable
     size::Int
-    # mutable
     used::Int
+    # mutable
     offset::Int
     io::IO
     isdirtybuffer::Bool
@@ -14,6 +14,15 @@ function Block{T}(::Type{T}, size, used, buffersize, io)
     buffer = zeros(T, buffersize)
     dirtybit = falses(buffersize)
     Block(size, used, 0, io, false, buffer, dirtybit)
+end
+
+function init!{T}(block::Block{T})
+    block.offset = 0
+    seekstart(block.io)
+    truncate(block.io, 0)
+    block.isdirtybuffer = false
+    fill!(block.buffer, zero(T))
+    fill!(block.dirtybit, false)
 end
 
 function Base.getindex{T}(block::Block{T}, i::Integer)
@@ -135,4 +144,10 @@ function Base.fill!(arr::ArrayBuffer, x)
         arr[i] = x
     end
     arr
+end
+
+function init!(arr::ArrayBuffer)
+    for block in arr.blocks
+        init!(block)
+    end
 end

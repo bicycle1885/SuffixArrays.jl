@@ -120,7 +120,7 @@ function right_to_left!(A_lms_left, A_lms_right, count_s, n_s, s, t, σ)
 end
 
 function sais_se(s, SA, σ)
-    # Step 1
+    # Step 1: Scan sequence and determine suffix types
     println("Step 1")
     tic()
     n = length(s)
@@ -147,45 +147,36 @@ function sais_se(s, SA, σ)
     n_lms = accumulate!(count_lms)
 
     tmp = copy(count_lms)
-    lms_positions = open("lms_positions", "w+")
+    A_lms_left = ArrayBuffer{Int}(n_lms)
     for i in 2:n
         if t[i] && !t[i-1]
             # LMS-type
             char = s[i]
-            write(lms_positions, i)
-            write(lms_positions, count_lms[char+1])
+            A_lms_left[count_lms[char+1]] = i
             count_lms[char+1] += 1
         end
     end
     copy!(count_lms, tmp)
-    seek(lms_positions, 0)
-    A_lms_left = Array(Int, n_lms)
-    for _ in 1:n_lms
-        i = read(lms_positions, Int)
-        suf = read(lms_positions, Int)
-        A_lms_left[suf] = i
-    end
-    close(lms_positions)
-    rm("lms_positions")
     n_l = accumulate!(count_l)
     n_s = accumulate!(count_s, false)
 
-    # Step 2
+    # Step 2: Induced sort (stage 1)
     toc()
     println("Step 2")
     tic()
-    A_lms_right = zeros(Int, n_lms + 1)
+    A_lms_right = ArrayBuffer{Int}(n_lms + 1)
     A_L = left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
     finalize(A_L)
 
-    # Step 3
+    # Step 3: Induced sort (stage 2)
     toc()
     println("Step 3")
     tic()
+    init!(A_lms_left)
     A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, s, t, σ)
     finalize(A_S)
 
-    # Step 4
+    # Step 4: Check uniqueness of LMS-type suffixes
     toc()
     println("Step 4")
     tic()
@@ -207,7 +198,7 @@ function sais_se(s, SA, σ)
         end
     end
 
-    # Step 5
+    # Step 5: Naming LMS-type suffixes
     toc()
     println("Step 5")
     tic()
@@ -230,11 +221,12 @@ function sais_se(s, SA, σ)
     end
     resize!(S′, n′)
 
-    # Step 6
+    # Step 6: Recursion
     toc()
     println("Step 6")
     tic()
     ISA′ = Array(Int, n′)
+    init!(A_lms_left)
     if all(B)
         copy!(ISA′, S′)
     else
@@ -251,19 +243,21 @@ function sais_se(s, SA, σ)
     end
     #@show ISA′
 
-    # Step 7
+    # Step 7: Induced sort (stage 1)
     toc()
     println("Step 7")
     tic()
+    init!(A_lms_right)
     A_L = left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
 
-    # Step 8
+    # Step 8: Induced sort (stage 2)
     toc()
     println("Step 8")
     tic()
+    init!(A_lms_left)
     A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, s, t, σ)
 
-    # Step 9
+    # Step 9: Write output
     toc()
     println("Step 9")
     tic()
@@ -288,69 +282,3 @@ function sais_se(s, SA, σ)
 
     return SA
 end
-
-#=
-let
-    for s in ["amammmasasmasassaara", "abra", "baba", "dabraaadad", "abaadad",
-        "aaaaa", "acacac", "abababa"]
-        println(s)
-        #s = vcat(s.data, 0)
-        s = s.data
-        n = length(s)
-        SA = Array(Int, n)
-        sais(s, SA, 0, n, 256, false)
-        #SA += 1
-        SA1 = ArrayBuffer{Int}(n)
-        sais_se(s, SA1, 128)
-        @assert SA == SA1
-        finalize(SA1)
-    end
-end
-
-let
-    for (s, σ) in [([1,2,3,2,1],4), ([3,2,1,2,3,2,1],4)]
-        println(s)
-        #s = vcat(s, 0)
-        n = length(s)
-        SA = Array(Int, n)
-        sais(s, SA, 0, n, σ, false)
-        #SA += 1
-        SA1 = ArrayBuffer{Int}(n)
-        sais_se(s, SA1, σ)
-        @assert SA == SA1
-        finalize(SA1)
-    end
-end
-
-let
-    srand(12345)
-    n = 1
-    for _ in 1:100
-        s = randstring(n)
-        #println(s)
-        #s = vcat(s.data, 0)
-        s = s.data
-        n = length(s)
-        SA = Array(Int, n)
-        sais(s, SA, 0, n, 256, false)
-        #SA += 1
-        SA1 = Array(Int, n)
-        sais_se(s, SA1, 128)
-        @assert SA == SA1
-    end
-end
-
-let
-    srand(12345)
-    n = 10000
-    s = rand(1:4, n)
-    push!(s, 0)
-    n += 1
-    SA = Array(Int, n)
-    sais(s, SA, 0, n, 256, false)
-    #SA += 1
-    SA1 = ArrayBuffer{Int}(n)
-    sais_se(s, SA1, 5)
-    @assert SA == SA1
-end
-=#
