@@ -1,15 +1,16 @@
+const MiB = 1024^2
+
 type ArrayBuffer{T} <: AbstractVector{T}
     array::Vector{T}
     io::IOStream
     function ArrayBuffer(len)
-        if len == 0
-            array = Vector{T}(len)
-            a = new(array)
+        if len * sizeof(T) ≤ 256MiB
+            a = new(zeros(T, len))
         else
-            dirname = "."
-            path, f = mktemp(dirname)
-            array = Mmap.mmap(f, Vector{T}, (len,), shared=false)
-            a = new(array, f)
+            dirname = pwd()
+            path, io = mktemp(dirname)
+            array = Mmap.mmap(io, Vector{T}, (len,), shared=false)
+            a = new(array, io)
             finalizer(a, x -> begin
                 close(x.io)
                 rm(path)
@@ -20,7 +21,7 @@ type ArrayBuffer{T} <: AbstractVector{T}
 end
 
 function Base.getindex(a::ArrayBuffer, i::Integer)
-    return a.array[i]
+    a.array[i]
 end
 
 function Base.setindex!{T}(a::ArrayBuffer{T}, x::T, i::Integer)
