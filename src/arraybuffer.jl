@@ -24,7 +24,7 @@ function Base.getindex(a::ArrayBuffer, i::Integer)
     a.array[i]
 end
 
-function Base.setindex!{T}(a::ArrayBuffer{T}, x::T, i::Integer)
+function Base.setindex!(a::ArrayBuffer, x, i::Integer)
     a.array[i] = x
 end
 

@@ -53,17 +53,17 @@ function find_next_LMS(t, start)
     return 0
 end
 
-function invert(SA)
+function invert{T}(SA, ::Type{T})
     n = length(SA)
-    ISA = ArrayBuffer{Int}(n)
+    ISA = ArrayBuffer{T}(n)
     for i in 1:n
         ISA[SA[i]+1] = i - 1
     end
     return ISA
 end
 
-function left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
-    A_L = ArrayBuffer{Int}(n_l)
+function left_to_right!{T}(A_lms_left::AbstractVector{T}, A_lms_right::AbstractVector{T}, count_l, n_l, s, t, σ)
+    A_L = ArrayBuffer{T}(n_l)
     let count_l = copy(count_l)
         i = li = ri = 1
 
@@ -105,8 +105,8 @@ function left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
     return A_L
 end
 
-function right_to_left!(A_lms_left, A_lms_right, count_s, n_s, s, t, σ)
-    A_S = ArrayBuffer{Int}(n_s)
+function right_to_left!{T}(A_lms_left::AbstractVector{T}, A_lms_right::AbstractVector{T}, count_s, n_s, s, t, σ)
+    A_S = ArrayBuffer{T}(n_s)
     let count_s = copy(count_s)
         i = n_s
         ri = length(A_lms_right)
@@ -144,14 +144,24 @@ function right_to_left!(A_lms_left, A_lms_right, count_s, n_s, s, t, σ)
 end
 
 # a thin wrapper of sequence object, which encodes sequence values with UInt
-immutable Sequence{T} <: AbstractVector{UInt}
-    seq::T
+immutable Sequence{S} <: AbstractVector{UInt}
+    seq::S
 end
 
-Base.getindex(seq::Sequence, i) = convert(UInt, seq.seq[i])
+@inbounds Base.getindex(seq::Sequence, i) = convert(UInt, seq.seq[i])
 Base.length(seq::Sequence) = length(seq.seq)
 
 function sais_se(S, SA, σ)
+    n = length(S)
+    if n ≤ typemax(UInt32)
+        sais_se(S, SA, σ, UInt32)
+    else
+        sais_se(S, SA, σ, UInt64)
+    end
+    return SA
+end
+
+function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
     # Step 1: Scan sequence and determine suffix types
     println("Step 1")
     tic()
@@ -159,7 +169,7 @@ function sais_se(S, SA, σ)
     t = falses(n)
     (count_l, n_l), (count_s, n_s), (count_lms, n_lms) = scan!(t, S, σ)
 
-    A_lms_left = ArrayBuffer{Int}(n_lms)
+    A_lms_left = ArrayBuffer{T}(n_lms)
     let count_lms = copy(count_lms)
         for i in 2:n
             if t[i] && !t[i-1]
@@ -175,7 +185,7 @@ function sais_se(S, SA, σ)
     toc()
     println("Step 2")
     tic()
-    A_lms_right = ArrayBuffer{Int}(n_lms + 1)
+    A_lms_right = ArrayBuffer{T}(n_lms + 1)
     A_L = left_to_right!(A_lms_left, A_lms_right, count_l, n_l, S, t, σ)
     finalize(A_L)
 
@@ -183,7 +193,6 @@ function sais_se(S, SA, σ)
     toc()
     println("Step 3")
     tic()
-    init!(A_lms_left)
     A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, S, t, σ)
     finalize(A_S)
 
@@ -213,7 +222,7 @@ function sais_se(S, SA, σ)
     toc()
     println("Step 5")
     tic()
-    S″ = ArrayBuffer{Int}(div(n, 2) + 1)
+    S″ = ArrayBuffer{T}(div(n, 2) + 1)
     n′ = n_lms
     σ′ = 0
     for i in 1:n′
@@ -223,7 +232,7 @@ function sais_se(S, SA, σ)
         j = A_lms_left[i]
         S″[div(j-1,2)+1] = σ′
     end
-    S′ = ArrayBuffer{Int}(n′)
+    S′ = ArrayBuffer{T}(n′)
     let j = 1
         for i in 1:endof(S″)
             if S″[i] > 0
@@ -247,12 +256,11 @@ function sais_se(S, SA, σ)
             SA′ = Array(Int, n′)
             sais(S′, SA′, 0, n′, nextpow2(σ′), false)
         else
-            SA′ = ArrayBuffer{Int}(n′)
+            SA′ = ArrayBuffer{T}(n′)
             sais_se(S′, SA′, σ′)
         end
-        ISA′ = invert(SA′)
+        ISA′ = invert(SA′, T)
     end
-    init!(A_lms_left)
     let i = j = 1
         while (i = find_next_LMS(t, i)) > 0
             A_lms_left[ISA′[j]+1] = i
@@ -264,14 +272,12 @@ function sais_se(S, SA, σ)
     toc()
     println("Step 7")
     tic()
-    init!(A_lms_right)
     A_L = left_to_right!(A_lms_left, A_lms_right, count_l, n_l, S, t, σ)
 
     # Step 8: Induced sort (stage 2)
     toc()
     println("Step 8")
     tic()
-    init!(A_lms_left)
     A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, S, t, σ)
 
     # Step 9: Write output
