@@ -6,14 +6,18 @@ type ArrayBuffer{T} <: AbstractVector{T}
     function ArrayBuffer(len)
         if len * sizeof(T) ≤ 256MiB
             a = new(zeros(T, len))
+            finalizer(a, x -> begin
+                x.array = T[]
+            end)
         else
             dirname = pwd()
             path, io = mktemp(dirname)
             array = Mmap.mmap(io, Vector{T}, (len,), shared=false)
             a = new(array, io)
             finalizer(a, x -> begin
-                close(x.io)
+                isopen(x.io) && close(x.io)
                 rm(path)
+                x.array = T[]
             end)
         end
         return a

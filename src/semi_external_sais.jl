@@ -75,7 +75,7 @@ function left_to_right!{T}(A_lms_left::AbstractVector{T}, A_lms_right::AbstractV
         # because '$' is not a member of `A_lms_left`
         # <del>li += 1</del>
 
-        for char in 0:σ-1
+        @inbounds for char in 0:σ-1
             # advance suffixes in A_L and write suffixes to A_lms_right
             while i < count_l[char+1]
                 k = A_L[i]
@@ -111,7 +111,7 @@ function right_to_left!{T}(A_lms_left::AbstractVector{T}, A_lms_right::AbstractV
         i = n_s
         ri = length(A_lms_right)
         li = length(A_lms_left)
-        for char in σ-1:-1:0
+        @inbounds for char in σ-1:-1:0
             while i > count_s[char+1]
                 k = A_S[i]
                 @assert k > 0
@@ -195,6 +195,7 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
     tic()
     A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, S, t, σ)
     finalize(A_S)
+    finalize(A_lms_right)
 
     # Step 4: Check uniqueness of LMS-type suffixes
     toc()
@@ -207,9 +208,10 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
         l′ = A_lms_left[i-1]
         u′ = find_next_LMS(t, l′)
         if u - l == u′ - l′
-            while l <= u && S[l] == S[l′]
-                l  += 1
-                l′ += 1
+            # note: comparing backwards is much faster
+            while l <= u && S[u] == S[u′]
+                u  -= 1
+                u′ -= 1
             end
             if l > u
                 # duplicated
@@ -232,6 +234,7 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
         j = A_lms_left[i]
         S″[div(j-1,2)+1] = σ′
     end
+    finalize(A_lms_left)
     S′ = ArrayBuffer{T}(n′)
     let j = 1
         for i in 1:endof(S″)
@@ -241,6 +244,7 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
             end
         end
     end
+    finalize(S″)
     #@assert isempty(S′) || extrema(S′) == (0, σ′ - 1)
 
     # Step 6: Recursion
@@ -253,14 +257,16 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
     else
         if n′ ≤ div(1024^3, sizeof(Int))
             # bounded by 1GiB
-            SA′ = Array(Int, n′)
+            SA′ = Vector{Int}(n′)
             sais(S′, SA′, 0, n′, nextpow2(σ′), false)
         else
             SA′ = ArrayBuffer{T}(n′)
             sais_se(S′, SA′, σ′)
         end
+        finalize(S′)
         ISA′ = invert(SA′, T)
     end
+    A_lms_left = ArrayBuffer{T}(n_lms)
     let i = j = 1
         while (i = find_next_LMS(t, i)) > 0
             A_lms_left[ISA′[j]+1] = i
@@ -272,6 +278,7 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
     toc()
     println("Step 7")
     tic()
+    A_lms_right = ArrayBuffer{T}(n_lms + 1)
     A_L = left_to_right!(A_lms_left, A_lms_right, count_l, n_l, S, t, σ)
 
     # Step 8: Induced sort (stage 2)
@@ -279,6 +286,8 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
     println("Step 8")
     tic()
     A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, S, t, σ)
+    finalize(A_lms_left)
+    finalize(A_lms_right)
 
     # Step 9: Write output
     toc()
