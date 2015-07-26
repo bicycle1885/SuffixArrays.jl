@@ -8,7 +8,7 @@ type ArrayBuffer{T} <: AbstractVector{T}
         else
             dirname = "."
             path, f = mktemp(dirname)
-            array = Mmap.mmap(f, Vector{T}, (len,))
+            array = Mmap.mmap(f, Vector{T}, (len,), shared=false)
             a = new(array, f)
             finalizer(a, x -> begin
                 close(x.io)

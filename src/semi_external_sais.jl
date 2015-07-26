@@ -34,6 +34,15 @@ function find_next_LMS(t, start)
     return 0
 end
 
+function invert(SA)
+    n = length(SA)
+    ISA = ArrayBuffer{Int}(n)
+    for i in 1:n
+        ISA[SA[i]+1] = i - 1
+    end
+    return ISA
+end
+
 function left_to_right!(A_lms_left, A_lms_right, count_l, n_l, s, t, σ)
     #A_L = ArrayBuffer{Int,true}(n_l)
     A_L = ArrayBuffer{Int}(n_l)
@@ -171,6 +180,7 @@ function sais_se(s, SA, σ)
 
     # Step 2: Induced sort (stage 1)
     toc()
+    #quit()
     println("Step 2")
     tic()
     A_lms_right = ArrayBuffer{Int}(n_lms + 1)
@@ -212,7 +222,7 @@ function sais_se(s, SA, σ)
     toc()
     println("Step 5")
     tic()
-    S′ = zeros(Int, div(n, 2) + 1)
+    S″ = ArrayBuffer{Int}(div(n, 2) + 1)
     n′ = n_lms
     σ′ = 0
     for i in 1:n′
@@ -220,40 +230,44 @@ function sais_se(s, SA, σ)
             σ′ += 1
         end
         j = A_lms_left[i]
-        S′[div(j-1,2)+1] = σ′
+        S″[div(j-1,2)+1] = σ′
     end
     j = 1
-    for i in 1:endof(S′)
-        if S′[i] > 0
-            S′[j] = S′[i]
+    S′ = ArrayBuffer{Int}(n′)
+    for i in 1:endof(S″)
+        if S″[i] > 0
+            S′[j] = S″[i] - 1
             j += 1
         end
     end
-    resize!(S′, n′)
+    if !isempty(S′)
+        @assert extrema(S′) == (0, σ′ - 1)
+    end
 
     # Step 6: Recursion
     toc()
     println("Step 6")
     tic()
-    ISA′ = Array(Int, n′)
+    # note: values of ISA′ and S′ start from zero
     if all(B)
-        copy!(ISA′, S′)
+        ISA′ = S′
     else
-        @assert n′ ≤ div(1024^3, sizeof(Int))
-        # bounded by 1GiB
-        SA′ = Array(Int, n′)
-        sais(S′, SA′, 0, n′, nextpow2(σ′), false)
-        for i in 1:n′
-            ISA′[SA′[i]+1] = i
+        if n′ ≤ div(1024^3, sizeof(Int))
+            # bounded by 1GiB
+            SA′ = Array(Int, n′)
+            sais(S′, SA′, 0, n′, nextpow2(σ′), false)
+        else
+            SA′ = ArrayBuffer{Int}(n′)
+            sais_se(S′, SA′, σ′)
         end
-        init!(A_lms_left)
-        i = j = 1
-        while (i = find_next_LMS(t, i)) > 0
-            A_lms_left[ISA′[j]] = i
-            j += 1
-        end
+        ISA′ = invert(SA′)
     end
-    #@show ISA′
+    init!(A_lms_left)
+    i = j = 1
+    while (i = find_next_LMS(t, i)) > 0
+        A_lms_left[ISA′[j]+1] = i
+        j += 1
+    end
 
     # Step 7: Induced sort (stage 1)
     toc()
