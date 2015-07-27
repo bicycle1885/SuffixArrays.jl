@@ -62,6 +62,10 @@ function invert{T}(SA, ::Type{T})
     return ISA
 end
 
+function destroy!(a::Vector)
+    empty!(a)
+end
+
 function left_to_right!{T}(A_lms_left::AbstractVector{T}, A_lms_right::AbstractVector{T}, count_l, n_l, s, t, σ)
     A_L = ArrayBuffer{T}(n_l)
     let count_l = copy(count_l)
@@ -187,15 +191,20 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
     tic()
     A_lms_right = ArrayBuffer{T}(n_lms + 1)
     A_L = left_to_right!(A_lms_left, A_lms_right, count_l, n_l, S, t, σ)
-    finalize(A_L)
+    destroy!(A_L)
+    #finalize(A_L)
+    gc()
 
     # Step 3: Induced sort (stage 2)
     toc()
     println("Step 3")
     tic()
     A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, S, t, σ)
-    finalize(A_S)
-    finalize(A_lms_right)
+    #finalize(A_S)
+    destroy!(A_S)
+    #finalize(A_lms_right)
+    destroy!(A_lms_right)
+    gc()
 
     # Step 4: Check uniqueness of LMS-type suffixes
     toc()
@@ -234,7 +243,8 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
         j = A_lms_left[i]
         S″[div(j-1,2)+1] = σ′
     end
-    finalize(A_lms_left)
+    #finalize(A_lms_left)
+    destroy!(A_lms_left)
     S′ = ArrayBuffer{T}(n′)
     let j = 1
         for i in 1:endof(S″)
@@ -244,7 +254,9 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
             end
         end
     end
-    finalize(S″)
+    #finalize(S″)
+    destroy!(S″)
+    gc()
     #@assert isempty(S′) || extrema(S′) == (0, σ′ - 1)
 
     # Step 6: Recursion
@@ -263,8 +275,10 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
             SA′ = ArrayBuffer{T}(n′)
             sais_se(S′, SA′, σ′)
         end
-        finalize(S′)
+        #finalize(S′)
+        destroy!(S′)
         ISA′ = invert(SA′, T)
+        destroy!(SA′)
     end
     A_lms_left = ArrayBuffer{T}(n_lms)
     let i = j = 1
@@ -273,6 +287,8 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
             j += 1
         end
     end
+    destroy!(ISA′)
+    gc()
 
     # Step 7: Induced sort (stage 1)
     toc()
@@ -280,14 +296,18 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
     tic()
     A_lms_right = ArrayBuffer{T}(n_lms + 1)
     A_L = left_to_right!(A_lms_left, A_lms_right, count_l, n_l, S, t, σ)
+    gc()
 
     # Step 8: Induced sort (stage 2)
     toc()
     println("Step 8")
     tic()
     A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, S, t, σ)
-    finalize(A_lms_left)
-    finalize(A_lms_right)
+    #finalize(A_lms_left)
+    destroy!(A_lms_left)
+    #finalize(A_lms_right)
+    destroy!(A_lms_right)
+    gc()
 
     # Step 9: Write output
     toc()
@@ -309,8 +329,11 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
             end
         end
     end
-    finalize(A_L)
-    finalize(A_S)
+    #finalize(A_L)
+    destroy!(A_L)
+    #finalize(A_S)
+    destroy!(A_S)
+    gc()
     toc()
 
     return SA
