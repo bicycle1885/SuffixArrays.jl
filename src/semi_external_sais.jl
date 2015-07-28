@@ -157,6 +157,20 @@ function right_to_left!{T}(A_lms_left::AbstractVector{T}, A_lms_right::AbstractV
     return A_S
 end
 
+macro step(n, msg)
+    quote
+        $n ≥ 2 && begin print("|   " ^ recursion); toc() end
+        println("|   " ^ recursion, "Step $($n) - $($msg)")
+        tic()
+    end
+end
+
+macro fin()
+    quote
+        begin print("|   " ^ recursion); toc() end
+    end
+end
+
 # a thin wrapper of sequence object, which encodes sequence values with UInt
 immutable Sequence{S} <: AbstractVector{UInt}
     seq::S
@@ -176,9 +190,7 @@ function sais_se(S, SA, σ)
 end
 
 function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
-    # Step 1: Scan sequence and determine suffix types
-    println("Step 1")
-    tic()
+    @step 1 "Scan sequence and determine suffix types"
     n = length(S)
     t = falses(n)
     (count_l, n_l), (count_s, n_s), (count_lms, n_lms) = scan!(t, S, σ)
@@ -193,31 +205,19 @@ function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
         end
     end
 
-    # Step 2: Induced sort (stage 1)
-    toc()
-    println("Step 2")
-    tic()
+    @step 2 "Induced sort (stage 1)"
     A_lms_right = ArrayBuffer{T}(n_lms + 1)
     A_L = left_to_right!(A_lms_left, A_lms_right, count_l, n_l, S, t, σ)
     destroy!(A_L)
-    #finalize(A_L)
     gc()
 
-    # Step 3: Induced sort (stage 2)
-    toc()
-    println("Step 3")
-    tic()
+    @step 3 "Induced sort (stage 2)"
     A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, S, t, σ)
-    #finalize(A_S)
     destroy!(A_S)
-    #finalize(A_lms_right)
     destroy!(A_lms_right)
     gc()
 
-    # Step 4: Check uniqueness of LMS-type suffixes
-    toc()
-    println("Step 4")
-    tic()
+    @step 4 "Check uniqueness of LMS-type suffixes"
     B = trues(n_lms)
     let
         if n_lms ≥ 2
@@ -233,11 +233,11 @@ function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
             end
         end
     end
+    tpath, tio = mktemp(pwd())
+    serialize(tio, t)
+    close(tio)
 
-    # Step 5: Naming LMS-type suffixes
-    toc()
-    println("Step 5")
-    tic()
+    @step 5 "Name LMS-type suffixes"
     S″ = ArrayBuffer{T}(div(n, 2) + 1)
     n′ = n_lms
     σ′ = 0
@@ -248,7 +248,6 @@ function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
         j = A_lms_left[i]
         S″[div(j-1,2)+1] = σ′
     end
-    #finalize(A_lms_left)
     destroy!(A_lms_left)
     S′ = ArrayBuffer{T}(n′)
     let j = 1
@@ -259,32 +258,27 @@ function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
             end
         end
     end
-    #finalize(S″)
     destroy!(S″)
     gc()
-    #@assert isempty(S′) || extrema(S′) == (0, σ′ - 1)
 
-    # Step 6: Recursion
-    toc()
-    println("Step 6")
-    tic()
+    @step 6 "Recursion"
     # note: values of ISA′ and S′ start from zero
     if all(B)
         ISA′ = S′
     else
-        if n′ ≤ div(1024^3, sizeof(Int))
+        if n′ ≤ div(1024^3, sizeof(UInt))
             # bounded by 1GiB
             SA′ = Vector{Int}(n′)
             sais(S′, SA′, 0, n′, nextpow2(σ′), false)
         else
-            SA′ = ArrayBuffer{T}(n′)
-            sais_se(S′, SA′, σ′, recursion + 1)
+            SA′ = ArrayBuffer{n′ < typemax(UInt32) ? UInt32 : UInt64}(n′)
+            sais_se(S′, SA′, σ′, recursion + 1, eltype(SA′))
         end
-        #finalize(S′)
         destroy!(S′)
         ISA′ = invert(SA′, T)
         destroy!(SA′)
     end
+    t::BitVector = open(deserialize, tpath)
     A_lms_left = ArrayBuffer{T}(n_lms)
     let i = j = 1
         while (i = find_next_LMS(t, i)) > 0
@@ -295,29 +289,18 @@ function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
     destroy!(ISA′)
     gc()
 
-    # Step 7: Induced sort (stage 1)
-    toc()
-    println("Step 7")
-    tic()
+    @step 7 "Induced sort (stage 1)"
     A_lms_right = ArrayBuffer{T}(n_lms + 1)
     A_L = left_to_right!(A_lms_left, A_lms_right, count_l, n_l, S, t, σ)
     gc()
 
-    # Step 8: Induced sort (stage 2)
-    toc()
-    println("Step 8")
-    tic()
+    @step 8 "Induced sort (stage 2)"
     A_S = right_to_left!(A_lms_left, A_lms_right, count_s, n_s, S, t, σ)
-    #finalize(A_lms_left)
     destroy!(A_lms_left)
-    #finalize(A_lms_right)
     destroy!(A_lms_right)
     gc()
 
-    # Step 9: Write output
-    toc()
-    println("Step 9")
-    tic()
+    @step 9 "Write output"
     let i = li = si = 1
         for char in 0:σ-1
             # L-type suffixes come first
@@ -334,12 +317,10 @@ function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
             end
         end
     end
-    #finalize(A_L)
     destroy!(A_L)
-    #finalize(A_S)
     destroy!(A_S)
     gc()
-    toc()
+    @fin
 
     return SA
 end
