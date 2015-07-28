@@ -150,7 +150,7 @@ immutable Sequence{S} <: AbstractVector{UInt}
     seq::S
 end
 
-@inbounds Base.getindex(seq::Sequence, i) = convert(UInt, seq.seq[i])
+@inline Base.getindex(seq::Sequence, i) = convert(UInt, seq.seq[i])
 Base.length(seq::Sequence) = length(seq.seq)
 
 function sais_se(S, SA, σ)
