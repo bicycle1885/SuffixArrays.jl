@@ -16,25 +16,29 @@ function accumulate!(count, startpoint)
 end
 
 function scan!(t, S, σ)
-    n = length(S)
     count_l = zeros(Int, σ)
     count_s = zeros(Int, σ)
     count_lms = zeros(Int, σ + 1)
+    n = length(S)
     count_l[S[n]+1] += 1
-    for i in n-1:-1:1
+    char′ = S[n]
+    is_s′ = false
+    @inbounds for i in n-1:-1:1
         char = S[i]
-        t[i] = S[i] == S[i+1] ? t[i+1] : S[i] < S[i+1]
-        if t[i]
+        is_s = char == char′ ? is_s′ : char < char′
+        if is_s
             # S-type
             count_s[char+1] += 1
         else
             # L-type
             count_l[char+1] += 1
-            if t[i+1]
+            if is_s′
                 # i+1 is LMS-type
-                count_lms[S[i+1]+1] += 1
+                count_lms[char′+1] += 1
             end
         end
+        char′ = char
+        t[i] = is_s′ = is_s
     end
     n_l = accumulate!(count_l, true)
     n_s = accumulate!(count_s, false)
@@ -43,14 +47,8 @@ function scan!(t, S, σ)
 end
 
 function find_next_LMS(t, start)
-    s_type = t[start]
-    for i in start+1:endof(t)
-        if !s_type && t[i]
-            return i
-        end
-        s_type = t[i]
-    end
-    return 0
+    # find L-type, then find S-type
+    return findnext(t, findnext(t, false, start))
 end
 
 function invert{T}(SA, ::Type{T})
@@ -158,14 +156,14 @@ Base.length(seq::Sequence) = length(seq.seq)
 function sais_se(S, SA, σ)
     n = length(S)
     if n ≤ typemax(UInt32)
-        sais_se(S, SA, σ, UInt32)
+        sais_se(S, SA, σ, 0, UInt32)
     else
-        sais_se(S, SA, σ, UInt64)
+        sais_se(S, SA, σ, 0, UInt64)
     end
     return SA
 end
 
-function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
+function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
     # Step 1: Scan sequence and determine suffix types
     println("Step 1")
     tic()
@@ -175,13 +173,11 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
 
     A_lms_left = ArrayBuffer{T}(n_lms)
     let count_lms = copy(count_lms)
-        for i in 2:n
-            if t[i] && !t[i-1]
-                # LMS-type
-                char = S[i]
-                A_lms_left[count_lms[char+1]] = i
-                count_lms[char+1] += 1
-            end
+        i = 1
+        while (i = find_next_LMS(t, i)) > 0
+            char = S[i]
+            A_lms_left[count_lms[char+1]] = i
+            count_lms[char+1] += 1
         end
     end
 
@@ -273,7 +269,7 @@ function sais_se{T<:Integer}(S, SA, σ, ::Type{T})
             sais(S′, SA′, 0, n′, nextpow2(σ′), false)
         else
             SA′ = ArrayBuffer{T}(n′)
-            sais_se(S′, SA′, σ′)
+            sais_se(S′, SA′, σ′, recursion + 1)
         end
         #finalize(S′)
         destroy!(S′)
