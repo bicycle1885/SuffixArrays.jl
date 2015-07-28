@@ -26,11 +26,11 @@ type ArrayBuffer{T} <: AbstractVector{T}
 end
 
 @inline function Base.getindex(a::ArrayBuffer, i::Integer)
-    a.array[i]
+    @inbounds return a.array[i]
 end
 
 @inline function Base.setindex!(a::ArrayBuffer, x, i::Integer)
-    a.array[i] = x
+    @inbounds return a.array[i] = x
 end
 
 function Base.length(a::ArrayBuffer)

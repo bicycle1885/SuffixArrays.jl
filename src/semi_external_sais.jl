@@ -63,6 +63,28 @@ function is_equal_seq(s, l, u, l′, u′)
     return l > p
 end
 
+function find_char_end(S, A, i)
+    char = S[A[i]]
+    l, u = i, length(A)
+    if S[A[u]] == char
+        return u
+    end
+    while u - l > 5
+        m = div(l + u, 2)
+        if S[A[m]] == char
+            l = m
+        else
+            u = m
+        end
+    end
+    for i in l+1:u
+        if S[A[i]] != char
+            return i - 1
+        end
+    end
+    return -1
+end
+
 function invert{T}(SA, ::Type{T})
     n = length(SA)
     ISA = ArrayBuffer{T}(n)
@@ -155,6 +177,47 @@ function right_to_left!{T}(A_lms_left::AbstractVector{T}, A_lms_right::AbstractV
         end
     end
     return A_S
+end
+
+function write_output!(SA, S, A_L, A_S, σ)
+    n = length(S)
+    i = li = si = 1
+    if n ≥ 100σ
+        @inbounds for char in 0:σ-1
+            # L-type suffixes come first
+            if li ≤ endof(A_L) && S[A_L[li]] == char
+                li′ = find_char_end(S, A_L, li)
+                for j in li:li′
+                    SA[i] = A_L[j] - 1
+                    i += 1
+                end
+                li = li′ + 1
+            end
+            # then S-type ones
+            if si ≤ endof(A_S) && S[A_S[si]] == char
+                si′ = find_char_end(S, A_S, si)
+                for j in si:si′
+                    SA[i] = A_S[j] - 1
+                    i += 1
+                end
+                si = si′ + 1
+            end
+        end
+    else
+        @inbounds for char in 0:σ-1
+            while li ≤ endof(A_L) && S[A_L[li]] == char
+                SA[i] = A_L[li] - 1
+                i += 1
+                li += 1
+            end
+            while si ≤ endof(A_S) && S[A_S[si]] == char
+                SA[i] = A_S[si] - 1
+                i += 1
+                si += 1
+            end
+        end
+    end
+    return SA
 end
 
 macro step(n, msg)
@@ -266,8 +329,8 @@ function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
     if all(B)
         ISA′ = S′
     else
-        if n′ ≤ div(1024^3, sizeof(UInt))
-            # bounded by 1GiB
+        MiB = 1024^2
+        if n′ ≤ div(128MiB, sizeof(Int))
             SA′ = Vector{Int}(n′)
             sais(S′, SA′, 0, n′, nextpow2(σ′), false)
         else
@@ -301,22 +364,7 @@ function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
     gc()
 
     @step 9 "Write output"
-    let i = li = si = 1
-        for char in 0:σ-1
-            # L-type suffixes come first
-            while li ≤ n_l && S[A_L[li]] == char
-                SA[i] = A_L[li] - 1
-                i += 1
-                li += 1
-            end
-            # then S-type ones
-            while si ≤ n_s && S[A_S[si]] == char
-                SA[i] = A_S[si] - 1
-                i += 1
-                si += 1
-            end
-        end
-    end
+    write_output!(SA, S, A_L, A_S, σ)
     destroy!(A_L)
     destroy!(A_S)
     gc()
