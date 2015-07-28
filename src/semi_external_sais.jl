@@ -51,6 +51,18 @@ function find_next_LMS(t, start)
     return findnext(t, findnext(t, false, start))
 end
 
+function is_equal_seq(s, l, u, l′, u′)
+    if u - l != u′ - l′
+        return false
+    end
+    p, q = u, u′
+    # note: comparing backwards is much faster
+    while l <= p && s[p] == s[q]
+        p -= 1; q -= 1
+    end
+    return l > p
+end
+
 function invert{T}(SA, ::Type{T})
     n = length(SA)
     ISA = ArrayBuffer{T}(n)
@@ -207,20 +219,17 @@ function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
     println("Step 4")
     tic()
     B = trues(n_lms)
-    for i in 2:n_lms
-        l  = A_lms_left[i]
-        u  = find_next_LMS(t, l)
-        l′ = A_lms_left[i-1]
-        u′ = find_next_LMS(t, l′)
-        if u - l == u′ - l′
-            # note: comparing backwards is much faster
-            while l <= u && S[u] == S[u′]
-                u  -= 1
-                u′ -= 1
-            end
-            if l > u
-                # duplicated
-                B[i] = false
+    let
+        if n_lms ≥ 2
+            l′ = A_lms_left[1]
+            u′ = find_next_LMS(t, l′)
+            for i in 2:n_lms
+                l  = A_lms_left[i]
+                u  = find_next_LMS(t, l)
+                if is_equal_seq(S, l, u, l′, u′)
+                    B[i] = false
+                end
+                l′, u′ = l, u
             end
         end
     end
