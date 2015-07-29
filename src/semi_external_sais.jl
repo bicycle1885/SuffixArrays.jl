@@ -222,15 +222,17 @@ end
 
 macro step(n, msg)
     quote
-        $n ≥ 2 && begin print("|   " ^ recursion); toc() end
-        println("|   " ^ recursion, "Step $($n) - $($msg)")
+        $n ≥ 2 && println(STDERR, "|   " ^ recursion, "(", toq(), " sec)")
+        println(STDERR, "|   " ^ recursion, "Step $($n) - $($msg)")
+        flush(STDERR)
         tic()
     end
 end
 
 macro fin()
     quote
-        begin print("|   " ^ recursion); toc() end
+        println(STDERR, "|   " ^ recursion, "(", toq(), " sec)")
+        flush(STDERR)
     end
 end
 
@@ -342,6 +344,7 @@ function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
         destroy!(SA′)
     end
     t::BitVector = open(deserialize, tpath)
+    rm(tpath)
     A_lms_left = ArrayBuffer{T}(n_lms)
     let i = j = 1
         while (i = find_next_LMS(t, i)) > 0
