@@ -250,17 +250,21 @@ end
 
 macro step(n, msg)
     quote
-        $n ≥ 2 && println(STDERR, "|   " ^ recursion, "(", toq(), " sec)")
-        println(STDERR, "|   " ^ recursion, "Step $($n) - $($msg)")
-        flush(STDERR)
-        tic()
+        if progress
+            $n ≥ 2 && println(STDERR, "|   " ^ recursion, "(", toq(), " sec)")
+            println(STDERR, "|   " ^ recursion, "Step $($n) - $($msg)")
+            flush(STDERR)
+            tic()
+        end
     end
 end
 
 macro fin()
     quote
-        println(STDERR, "|   " ^ recursion, "(", toq(), " sec)")
-        flush(STDERR)
+        if progress
+            println(STDERR, "|   " ^ recursion, "(", toq(), " sec)")
+            flush(STDERR)
+        end
     end
 end
 
@@ -272,17 +276,17 @@ end
 Base.length(seq::Sequence) = length(seq.seq)
 @inline Base.getindex(seq::Sequence, i) = convert(UInt, seq.seq[i])
 
-function sais_se(S, SA, σ)
+function sais_se(S, SA, σ; progress::Bool=false)
     n = length(S)
     if n ≤ typemax(UInt32)
-        sais_se(S, SA, σ, 0, UInt32)
+        sais_se(S, SA, σ, 0, progress, UInt32)
     else
-        sais_se(S, SA, σ, 0, UInt64)
+        sais_se(S, SA, σ, 0, progress, UInt64)
     end
     return SA
 end
 
-function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
+function sais_se{T<:Integer}(S, SA, σ, recursion, progress, ::Type{T})
     @step 1 "Scan sequence and determine suffix types"
     n = length(S)
     t = falses(n)
@@ -360,7 +364,7 @@ function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
             sais(S′, SA′, 0, n′, nextpow2(σ′), false)
         else
             SA′ = ArrayBuffer{T′}(n′)
-            sais_se(S′, SA′, σ′, recursion + 1, T′)
+            sais_se(S′, SA′, σ′, recursion + 1, progress, T′)
         end
         destroy!(S′)
         ISA′ = invert(SA′, T′)
