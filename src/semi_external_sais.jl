@@ -69,6 +69,12 @@ function find_char_end(S, A, i)
     if S[A[u]] == char
         return u
     end
+    # when char = 'x'
+    # invariant:
+    # S: ...xxxx...yyy...
+    #       ^       ^
+    #       l       u
+    # binary search
     while u - l > 5
         m = div(l + u, 2)
         if S[A[m]] == char
@@ -77,6 +83,7 @@ function find_char_end(S, A, i)
             u = m
         end
     end
+    # sequential search
     for i in l+1:u
         if S[A[i]] != char
             return i - 1
@@ -220,6 +227,27 @@ function write_output!(SA, S, A_L, A_S, σ)
     return SA
 end
 
+# remove zeros
+function pack!(S′, S″)
+    j = 1
+    for i in 1:endof(S″)
+        if S″[i] > 0
+            S′[j] = S″[i] - 1
+            j += 1
+        end
+    end
+    S′
+end
+
+function fill_lms!(A_lms_left, ISA, t)
+    i = j = 1
+    while (i = find_next_LMS(t, i)) > 0
+        A_lms_left[ISA[j]+1] = i
+        j += 1
+    end
+    A_lms_left
+end
+
 macro step(n, msg)
     quote
         $n ≥ 2 && println(STDERR, "|   " ^ recursion, "(", toq(), " sec)")
@@ -241,8 +269,8 @@ immutable Sequence{S} <: AbstractVector{UInt}
     seq::S
 end
 
-@inline Base.getindex(seq::Sequence, i) = convert(UInt, seq.seq[i])
 Base.length(seq::Sequence) = length(seq.seq)
+@inline Base.getindex(seq::Sequence, i) = convert(UInt, seq.seq[i])
 
 function sais_se(S, SA, σ)
     n = length(S)
@@ -314,21 +342,16 @@ function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
         S″[div(j-1,2)+1] = σ′
     end
     destroy!(A_lms_left)
-    S′ = ArrayBuffer{T}(n′)
-    let j = 1
-        for i in 1:endof(S″)
-            if S″[i] > 0
-                S′[j] = S″[i] - 1
-                j += 1
-            end
-        end
-    end
+    B = trues(0)
+    T′ = n′ ≤ typemax(UInt32) ? UInt32 : UInt64
+    S′ = ArrayBuffer{T′}(n′)
+    pack!(S′, S″)
     destroy!(S″)
     gc()
 
     @step 6 "Recursion"
     # note: values of ISA′ and S′ start from zero
-    if all(B)
+    if σ′ == n′
         ISA′ = S′
     else
         MiB = 1024^2
@@ -336,22 +359,17 @@ function sais_se{T<:Integer}(S, SA, σ, recursion, ::Type{T})
             SA′ = Vector{Int}(n′)
             sais(S′, SA′, 0, n′, nextpow2(σ′), false)
         else
-            SA′ = ArrayBuffer{n′ < typemax(UInt32) ? UInt32 : UInt64}(n′)
-            sais_se(S′, SA′, σ′, recursion + 1, eltype(SA′))
+            SA′ = ArrayBuffer{T′}(n′)
+            sais_se(S′, SA′, σ′, recursion + 1, T′)
         end
         destroy!(S′)
-        ISA′ = invert(SA′, T)
+        ISA′ = invert(SA′, T′)
         destroy!(SA′)
     end
     t::BitVector = open(deserialize, tpath)
-    rm(tpath)
+    isfile(tpath) && rm(tpath)
     A_lms_left = ArrayBuffer{T}(n_lms)
-    let i = j = 1
-        while (i = find_next_LMS(t, i)) > 0
-            A_lms_left[ISA′[j]+1] = i
-            j += 1
-        end
-    end
+    fill_lms!(A_lms_left, ISA′, t)
     destroy!(ISA′)
     gc()
 
