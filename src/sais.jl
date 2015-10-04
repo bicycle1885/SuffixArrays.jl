@@ -29,8 +29,8 @@ type IntArray
     a::Array{Int,1}
     pos::Int
 end
-getindex(a::IntArray,key) = a.a[a.pos + key]
-setindex!(a::IntArray,value,key) = a.a[a.pos + key] = value
+Base.getindex(a::IntArray,key) = a.a[a.pos + key]
+Base.setindex!(a::IntArray,value,key) = a.a[a.pos + key] = value
 
 # "banana" = [5 3 1 0 4 2]
 # "banana" = [6, 4, 2, 1, 5, 3]

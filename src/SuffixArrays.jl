@@ -2,7 +2,9 @@ module SuffixArrays
 
 export suffixsort
 
-immutable SuffixArray{S<:String,N<:Signed}
+using Compat
+
+immutable SuffixArray{S<:AbstractString,N<:Signed}
     string::S
     n::Int
     index::Array{N,1}
@@ -30,7 +32,7 @@ end
 #=contains(haystack, needle)
 
 matchall(substring, s::String)=#
-const MAXCHAR = char(255)
+const MAXCHAR = @compat Char(255)
 
 function lcp2(SA,s)
     inv = similar(SA)
